@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+# All rights reserved.
+#
+# Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+# All rights reserved.
+#
+# CI for nsgai.
+#
+# Two jobs run on every push and every PR:
+#
+#   * format-check : fast, no compilation, no dependencies beyond
+#                    clang-format.  Runs `cmake --build build --target
+#                    format-check` (which is the same check as the
+#                    pre-commit hook and the `nsgai_format_check`
+#                    ctest target).
+#
+#   * build-test   : builds c-ares (from upstream main, cached), then
+#                    nsgai, then runs the non-privileged ctest suite
+#                    (format-check + basic + valgrind variants).
+#
+# Mark both jobs as Required Status Checks in the repository's
+# branch-protection settings so PRs cannot merge until they pass.
+#
+# Runner labels:
+#   - On GitHub.com / GHE with GitHub-hosted runners: `ubuntu-latest`
+#     works as-is.
+#   - On GHE-only orgs (e.g. wwwin-github.cisco.com without hosted
+#     runners) replace `ubuntu-latest` with your org's self-hosted
+#     runner label (commonly something like `self-hosted, linux, x64`).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref/PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format-check:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-format cmake
+
+      - name: Run format-check
+        run: |
+          cmake -S . -B build -DNSGAI_BUILD_TESTS=OFF -DNSGAI_BUILD_NSS=OFF \
+                              -DNSGAI_BUILD_PRELOAD=OFF -DNSGAI_BUILD_EXAMPLES=OFF
+          cmake --build build --target format-check
+
+  build-test:
+    name: build + ctest
+    runs-on: ubuntu-latest
+    env:
+      CARES_REF: main         # bump to a tag once upstream cuts one we like
+      CARES_PREFIX: ${{ github.workspace }}/c-ares.install
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              build-essential cmake ninja-build git \
+              valgrind clang-format pkg-config
+
+      # ---- c-ares (cached) -----------------------------------------------
+      # Key on the upstream ref + the runner image so we rebuild when
+      # either changes.
+      - name: Cache c-ares install tree
+        id: cache-cares
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CARES_PREFIX }}
+          key: cares-${{ runner.os }}-${{ env.CARES_REF }}-v1
+
+      - name: Build c-ares
+        if: steps.cache-cares.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth=1 --branch "$CARES_REF" \
+              https://github.com/c-ares/c-ares.git c-ares.src
+          cmake -S c-ares.src -B c-ares.build -G Ninja \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DCMAKE_INSTALL_PREFIX="$CARES_PREFIX" \
+                -DCARES_STATIC=OFF -DCARES_SHARED=ON \
+                -DCARES_BUILD_TESTS=OFF -DCARES_BUILD_TOOLS=OFF
+          cmake --build c-ares.build --target install
+
+      # ---- nsgai ---------------------------------------------------------
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+                -DCMAKE_PREFIX_PATH="$CARES_PREFIX" \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test (non-privileged)
+        run: |
+          export LD_LIBRARY_PATH="$CARES_PREFIX/lib:$PWD/build:${LD_LIBRARY_PATH:-}"
+          ctest --test-dir build --output-on-failure -E netns

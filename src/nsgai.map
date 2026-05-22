@@ -1,0 +1,41 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+ * All rights reserved.
+ *
+ * ELF version script for libnsgai.so.
+ *
+ * Exports only the documented public API (the `nsgai_*` family plus
+ * the weak POSIX-named aliases that allow a direct link to replace
+ * libc's resolver).  All other symbols - the internal `nsgai_channel_*`
+ * helpers, `nsgai_ns_resolve_*`, `nsgai_map_ai_flags`, `cb_asocket`,
+ * etc. - become local and are not visible to consumers, so they
+ * cannot accidentally be relied upon and we are free to refactor them
+ * without an ABI bump.
+ *
+ * Wired in via target_link_options() in CMakeLists.txt.  A future
+ * second version (NSGAI_1) can be added for additions without
+ * bumping SONAME.
+ */
+
+NSGAI_0 {
+    global:
+        /* Implicit + explicit nsgai_* entry points and helpers. */
+        nsgai_getaddrinfo;
+        nsgai_getaddrinfo_ns;
+        nsgai_getaddrinfo_nsfd;
+        nsgai_getnameinfo;
+        nsgai_getnameinfo_ns;
+        nsgai_getnameinfo_nsfd;
+        nsgai_freeaddrinfo;
+        nsgai_gai_strerror;
+
+        /* Weak POSIX-named aliases - linking libnsgai replaces libc. */
+        getaddrinfo;
+        getnameinfo;
+        freeaddrinfo;
+        gai_strerror;
+
+    local:
+        *;
+};

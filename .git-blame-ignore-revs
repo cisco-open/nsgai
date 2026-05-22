@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+# All rights reserved.
+#
+# Revisions to ignore when running `git blame`.
+#
+# Enable per clone with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub honors this file automatically.)

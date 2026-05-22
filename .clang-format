@@ -1,0 +1,58 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+# All rights reserved.
+#
+# Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+# All rights reserved.
+#
+# clang-format config for nsgai.
+#
+# Goal: codify the existing style with the lightest possible touch so
+# the first reformat is small and predictable.  Adjust here, not in
+# code comments.
+Language:        Cpp
+BasedOnStyle:    LLVM
+IndentWidth:     4
+TabWidth:        4
+UseTab:          Never
+ColumnLimit:     80
+
+# Brace placement matches existing code: braces on next line for
+# functions and on same line for everything else.
+BreakBeforeBraces: Linux
+
+# Pointers and references: 'char *p', not 'char* p'.
+PointerAlignment: Right
+
+# Don't smush short bodies onto one line - existing code never does.
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Never
+InsertBraces: true
+
+# Existing code aligns runs of assignments and macros, but aligning
+# every local declaration tends to over-pad ordinary code - leave that
+# off.
+AlignConsecutiveAssignments:  Consecutive
+AlignConsecutiveDeclarations: None
+AlignConsecutiveMacros:       Consecutive
+
+# Existing code groups #includes logically; don't shuffle them.
+SortIncludes: Never
+
+IndentCaseLabels: true
+KeepEmptyLinesAtTheStartOfBlocks: false
+SpaceAfterCStyleCast: false
+SpacesBeforeTrailingComments: 3
+ReflowComments: false
+
+# Function declarations: return type on its own line, then function name
+# and parameters on the next line(s).  Parameters wrap per ColumnLimit.
+AlwaysBreakAfterReturnType: All
+BinPackParameters: false
+AllowAllParametersOfDeclarationOnNextLine: true
+AlignAfterOpenBracket: DontAlign

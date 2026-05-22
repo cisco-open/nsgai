@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+
+set -u
+
+cd "$(dirname "$0")" || exit 1
+
+rc=0
+
+find_system_lib() {
+    local name="$1"
+    local path
+
+    for path in \
+        "/usr/lib64/${name}" \
+        "/usr/lib/${name}" \
+        "/lib64/${name}" \
+        "/lib/${name}"
+    do
+        if [[ -e "${path}" ]]; then
+            printf '%s\n' "${path}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+NSS_MODULE="$(find_system_lib libnss_nsgai.so.2)" || {
+    echo "FAIL: could not find system-installed libnss_nsgai.so.2" >&2
+    exit 1
+}
+
+PRELOAD_LIB="$(find_system_lib libnsgai_preload.so)" || {
+    echo "FAIL: could not find system-installed libnsgai_preload.so" >&2
+    exit 1
+}
+
+run_test() {
+    local name="$1"
+    shift
+
+    local log="${name}.log"
+    echo "START: ${name}"
+    if "$@" >"${log}" 2>&1; then
+        echo "PASS: ${name}"
+        return 0
+    fi
+
+    local ec=$?
+    if [[ ${ec} -eq 77 ]]; then
+        echo "SKIP: ${name}"
+        return 0
+    fi
+
+    echo "FAIL: ${name} (exit=${ec})"
+    cat "${log}"
+    rc=1
+}
+
+run_test nsgai_basic ./nsgai_test
+run_test nsgai_api_coverage ./test_api_coverage
+run_test nsgai_channel_failures ./test_channel_failures
+run_test nsgai_nss_failures ./test_nss_failures
+run_test nsgai_channel_cache ./test_channel_cache
+run_test nsgai_channel_mocks ./test_channel_mocks
+run_test nsgai_nss_unit ./test_nss "${NSS_MODULE}"
+run_test nsgai_preload_unit \
+    env LD_PRELOAD="${PRELOAD_LIB}" ./test_preload
+
+run_test nsgai_netns_integration ./integration_netns.sh "$PWD/nsgai_adig"
+if command -v coredns >/dev/null 2>&1 || [[ -x "$PWD/coredns" ]]; then
+    run_test nsgai_dns_netns_integration \
+        env NSGAI_BUILD_DIR="$PWD" ./integration_dns_netns.sh \
+        "$PWD/nsgai_adig" "$PWD/test_multins" "$PWD/test_cache_stale"
+else
+    echo "SKIP: nsgai_dns_netns_integration (coredns not installed)"
+fi
+
+exit ${rc}

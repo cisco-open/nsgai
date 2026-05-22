@@ -1,0 +1,51 @@
+# ABI Baselines
+
+This directory stores reference shared objects for ABI compatibility checks during release.
+
+## Organization
+
+Store one baseline library per released version tag:
+
+```
+abi/baselines/v0.1.0/libnsgai.so.0.1.0
+abi/baselines/v0.2.0/libnsgai.so.0.2.0
+```
+
+## Usage
+
+When preparing a release candidate, compare the newly built `libnsgai.so` against the latest released baseline:
+
+```sh
+scripts/release-check.sh \
+  --cmake-prefix-path /path/to/c-ares/install \
+  --cares-libdir /path/to/c-ares/lib \
+  --baseline-lib abi/baselines/v0.1.0/libnsgai.so.0.1.0
+```
+
+The script will:
+
+1. Build the current tree.
+2. Run the full test suite.
+3. Validate exported symbols against `src/nsgai.map`.
+4. Run `abidiff` to compare the baseline against the current build.
+5. Write the ABI diff report to `build/release/abidiff.txt`.
+
+## Baseline creation
+
+After tagging a release, extract the built library and store it:
+
+```sh
+mkdir -p abi/baselines/vX.Y.Z
+cp build/libnsgai.so.X.Y.Z abi/baselines/vX.Y.Z/
+git add abi/baselines/vX.Y.Z/
+```
+
+Commit the baseline alongside the release tag.
+
+## ABI compatibility rules
+
+- **Patch release** (X.Y.Z): no ABI changes expected. Baseline should be identical.
+- **Minor release** (X.Y.0): additive ABI only. Baseline diff should show new symbols only, no removals or signature changes.
+- **Major release** (X.0.0): ABI incompatibilities allowed. Document all breaking changes in release notes.
+
+See [docs/release-process.md](../../docs/release-process.md) for full versioning policy.

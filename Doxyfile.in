@@ -1,0 +1,61 @@
+# Doxyfile.in — processed by CMake's configure_file() into build/Doxyfile.
+# Edit this file; do NOT edit the generated build/Doxyfile directly.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+# All rights reserved.
+# Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+
+PROJECT_NAME           = "@PROJECT_NAME@"
+PROJECT_NUMBER         = "@PROJECT_VERSION@"
+PROJECT_BRIEF          = "@PROJECT_DESCRIPTION@"
+OUTPUT_DIRECTORY       = @CMAKE_CURRENT_BINARY_DIR@/docs
+
+# Input -----------------------------------------------------------------------
+INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/include \
+                         @CMAKE_CURRENT_SOURCE_DIR@/src
+RECURSIVE              = NO
+FILE_PATTERNS          = *.h *.c
+EXCLUDE_PATTERNS       =
+
+# Extraction ------------------------------------------------------------------
+EXTRACT_ALL            = NO
+EXTRACT_STATIC         = YES
+EXTRACT_PRIVATE        = NO
+HIDE_UNDOC_MEMBERS     = NO
+INTERNAL_DOCS          = YES
+
+# Source display --------------------------------------------------------------
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+
+# Preprocessing ---------------------------------------------------------------
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = NO
+
+# Output formats --------------------------------------------------------------
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+HTML_DYNAMIC_SECTIONS  = YES
+GENERATE_LATEX         = NO
+GENERATE_MAN           = NO
+GENERATE_XML           = NO
+
+# Graphs (requires Graphviz dot) ----------------------------------------------
+HAVE_DOT               = @_DOXY_HAVE_DOT@
+CALL_GRAPH             = @_DOXY_HAVE_DOT@
+CALLER_GRAPH           = @_DOXY_HAVE_DOT@
+COLLABORATION_GRAPH    = @_DOXY_HAVE_DOT@
+INCLUDE_GRAPH          = YES
+INCLUDED_BY_GRAPH      = YES
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+
+# Warnings --------------------------------------------------------------------
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+QUIET                  = NO
+WARNINGS               = YES
