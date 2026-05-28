@@ -1,0 +1,95 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+# All rights reserved.
+
+name: c-ares-matrix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  matrix-build-test:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: c-ares 1.27.0 (yocto-scarthgap)
+            cares_ref: cares-1_27_0
+            run_netns: true
+          - label: c-ares v1.33.1 (legacy)
+            cares_ref: v1.33.1
+            run_netns: true
+          - label: c-ares v1.34.0 (boundary)
+            cares_ref: v1.34.0
+            run_netns: false
+          - label: c-ares v1.34.6 (latest)
+            cares_ref: v1.34.6
+            run_netns: true
+          - label: c-ares main (head)
+            cares_ref: main
+            run_netns: false
+
+    env:
+      CARES_PREFIX: ${{ github.workspace }}/c-ares.install
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              build-essential cmake ninja-build git \
+              valgrind clang-format pkg-config docker.io
+
+      - name: Cache c-ares install tree
+        id: cache-cares
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CARES_PREFIX }}
+          key: cares-${{ runner.os }}-${{ matrix.cares_ref }}-v1
+
+      - name: Build c-ares (${{ matrix.cares_ref }})
+        if: steps.cache-cares.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth=1 --branch "${{ matrix.cares_ref }}" \
+              https://github.com/c-ares/c-ares.git c-ares.src
+          cmake -S c-ares.src -B c-ares.build -G Ninja \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DCMAKE_INSTALL_PREFIX="$CARES_PREFIX" \
+                -DCARES_STATIC=OFF -DCARES_SHARED=ON \
+                -DCARES_BUILD_TESTS=OFF -DCARES_BUILD_TOOLS=OFF
+          cmake --build c-ares.build --target install
+
+      - name: Configure nsgai
+        run: |
+          cmake -S . -B build -G Ninja \
+                -DCMAKE_PREFIX_PATH="$CARES_PREFIX" \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build nsgai
+        run: cmake --build build
+
+      - name: Test nsgai (host)
+        run: |
+          export LD_LIBRARY_PATH="$CARES_PREFIX/lib:$CARES_PREFIX/lib64:$PWD/build:${LD_LIBRARY_PATH:-}"
+          ctest --test-dir build --output-on-failure -E netns
+
+      - name: Netns integration in Docker
+        if: matrix.run_netns
+        env:
+          NSGAI_CONTAINER_RUNTIME: docker
+        run: |
+          docker --version
+          ./scripts/run-container-tests.sh --rebuild
