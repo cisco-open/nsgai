@@ -94,15 +94,20 @@ For each new release candidate, compare against the latest released baseline.
    - breaking changes: major bump and migration notes
 4. Run `scripts/release-check.sh` with baseline comparison.
 5. Review ABI report (`build/release/abidiff.txt`) if present.
-6. Update `README.md` and release notes with API/ABI changes.
-7. Generate packages (optional for manual distribution):
+6. Verify namespace resolver-file semantics are documented clearly in
+  `README.md`:
+  - `/etc/netns/<name>/resolv.conf` falls back to `/etc/resolv.conf`
+  - `/etc/netns/<name>/hosts` falls back to `/etc/hosts`
+  - fallback is per file (partial override supported)
+7. Update `README.md` and release notes with API/ABI changes.
+8. Generate packages (optional for manual distribution):
    ```bash
    cd build
    cpack -G TGZ    # source tarball (recommended for Yocto/OpenEmbedded)
    cpack -G RPM    # binary RPM (Fedora/RHEL/openSUSE)
    cpack -G DEB    # binary DEB (Debian/Ubuntu)
    ```
-8. Tag release.
+9. Tag release.
 
 ## Standard tooling guidance
 

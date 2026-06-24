@@ -74,6 +74,23 @@ runs in.
   matches an entry under `/var/run/netns/`, the corresponding per-ns
   config files are picked up automatically.
 
+### Resolver File Fallback Semantics
+
+Resolver-file selection is intentionally **per file** and applies to both
+implicit and explicit entry points:
+
+* If `/etc/netns/<name>/resolv.conf` is readable, nsgai uses it;
+  otherwise resolution falls back to the default resolver file path
+  (`/etc/resolv.conf` in the process mount namespace).
+* If `/etc/netns/<name>/hosts` is readable, nsgai uses it; otherwise
+  host-file lookups fall back to the default hosts file path
+  (`/etc/hosts` in the process mount namespace).
+* The two files are independent: one may be overridden while the other
+  still uses the default.
+
+This matches common operator expectations for `ip netns exec` and allows
+intentional partial per-netns configuration.
+
 ## How no-fork namespace entry works
 
 For the explicit entry points, c-ares is given a custom set of socket
