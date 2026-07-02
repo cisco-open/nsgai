@@ -65,6 +65,16 @@ runs in.
   with no name registered), `/etc/resolv.conf` and `/etc/hosts` are
   used as usual.
 
+  > **The namespace must be named under `/var/run/netns/`.**  Per-ns
+  > config files are found by matching the thread's netns inode against
+  > entries in `/var/run/netns/`.  This directory is only populated when
+  > the namespace was created with `ip netns add NAME` (or manually
+  > bind-mounted there).  Namespaces created with `unshare --net` or
+  > `clone(CLONE_NEWNET)` alone have no entry in `/var/run/netns/` and
+  > will not pick up `/etc/netns/` config — they silently fall back to
+  > the default resolver files.  Verify with `ip netns identify $$`
+  > inside the target namespace.
+
 * **Explicit `_ns(name, …)`**: resolves using `/var/run/netns/<name>`
   and, if present, `/etc/netns/<name>/{resolv.conf,hosts}`.
 
@@ -182,13 +192,36 @@ are resolved in the calling thread's netns.
 ## Use as LD_PRELOAD (non-transparent)
 
 ```sh
-LD_PRELOAD=/path/to/build/libnsgai_preload.so myapp
+LD_PRELOAD=/path/to/build/libnsgai_preload.so.0 myapp
 ```
 
 Every name-resolution call from the process now goes through nsgai
 with current-thread-netns semantics.  There is no per-call gate and
 no fall-through — if you preload `libnsgai_preload.so`, you are
 opting `myapp` in to nsgai entirely.
+
+> **Programs that implement their own resolver are not affected.**
+> `host`, `dig`, and `nslookup` (from bind-utils / BIND9) call
+> libresolv directly and never invoke `getaddrinfo`, so preloading
+> has no effect on them.  To test the preload, use a tool that calls
+> `getaddrinfo`, for example:
+>
+> ```sh
+> LD_PRELOAD=/usr/lib64/libnsgai_preload.so.0 getent hosts server.test
+> ```
+
+> **`libnsgai_preload.so` depends on `libnsgai.so.0` and `libcares.so.2`.**
+> Both must be visible to the dynamic linker when the preload is loaded —
+> either installed to a system library directory with `ldconfig` run
+> afterward, or present in `LD_LIBRARY_PATH`.  If either dependency
+> cannot be resolved, the dynamic linker silently skips the preload and
+> the process runs with unmodified libc resolution (no error is printed).
+> Verify the installed library before testing:
+>
+> ```sh
+> readelf -d /usr/lib64/libnsgai_preload.so.0 | grep NEEDED
+> ldconfig -p | grep -E 'nsgai|cares'
+> ```
 
 ## Use as NSS module
 
@@ -203,6 +236,13 @@ hosts: files nsgai dns
 The module resolves in the calling thread's netns, so it composes
 naturally with `ip netns exec` and with multi-tenant daemons that
 have already `setns`-ed their handler thread before calling.
+
+> **glibc does not honour `LD_LIBRARY_PATH` for NSS modules.**
+> The NSS loader uses a fixed set of system library directories
+> (e.g. `/usr/lib64/` or the distribution's multiarch path) and ignores
+> `LD_LIBRARY_PATH` for security reasons.  Install `libnss_nsgai.so.2`
+> to the appropriate system directory and run `ldconfig` afterward.
+> Placing the file elsewhere and setting `LD_LIBRARY_PATH` will not work.
 
 ## Multi-tenant integration (rsyslogd)
 

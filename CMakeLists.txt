@@ -142,6 +142,8 @@ if(NSGAI_BUILD_PRELOAD)
     target_link_libraries(nsgai_preload PRIVATE nsgai dl pthread)
     set_target_properties(nsgai_preload PROPERTIES
         OUTPUT_NAME   nsgai_preload
+        VERSION       ${PROJECT_VERSION}
+        SOVERSION     ${PROJECT_VERSION_MAJOR}
         C_VISIBILITY_PRESET default
     )
 endif()
