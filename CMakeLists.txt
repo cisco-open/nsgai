@@ -185,6 +185,11 @@ if(NSGAI_BUILD_TESTS)
     add_executable(test_api_coverage test/test_api_coverage.c)
     target_link_libraries(test_api_coverage PRIVATE nsgai)
 
+    # Dedicated regression for rsyslog-style node==NULL getaddrinfo usage.
+    add_executable(test_rsyslog_null_node_regression
+        test/test_rsyslog_null_node_regression.c)
+    target_link_libraries(test_rsyslog_null_node_regression PRIVATE nsgai)
+
     # Coverage-focused test for the per-namespace channel cache.
     # Requires CAP_SYS_ADMIN for unshare(CLONE_NEWNET); self-skips
     # (exit 77) when the cap is unavailable.
@@ -250,6 +255,7 @@ if(NSGAI_BUILD_TESTS)
         "LINKER:--wrap=open"
         "LINKER:--wrap=fcntl"
         "LINKER:--wrap=ares_init_options"
+        "LINKER:--wrap=ares_getaddrinfo"
     )
 
     # Coverage-focused unit test for the NSS module.  Loads
@@ -271,6 +277,8 @@ if(NSGAI_BUILD_TESTS)
     enable_testing()
     add_test(NAME nsgai_basic COMMAND nsgai_test)
     add_test(NAME nsgai_api_coverage COMMAND test_api_coverage)
+    add_test(NAME nsgai_rsyslog_null_node_regression
+             COMMAND test_rsyslog_null_node_regression)
     add_test(NAME nsgai_api_coverage_preload COMMAND test_api_coverage)
     set_tests_properties(nsgai_api_coverage_preload PROPERTIES
         ENVIRONMENT "LD_PRELOAD=$<TARGET_FILE:nsgai>")
@@ -309,6 +317,8 @@ if(NSGAI_BUILD_TESTS)
                  COMMAND ${_vg} $<TARGET_FILE:nsgai_test>)
         add_test(NAME nsgai_api_coverage_valgrind
                  COMMAND ${_vg} $<TARGET_FILE:test_api_coverage>)
+        add_test(NAME nsgai_rsyslog_null_node_regression_valgrind
+                 COMMAND ${_vg} $<TARGET_FILE:test_rsyslog_null_node_regression>)
         if(NSGAI_BUILD_EXAMPLES)
             add_test(NAME nsgai_adig_valgrind
                      COMMAND ${_vg} $<TARGET_FILE:nsgai_adig> -4 -c localhost)

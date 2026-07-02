@@ -395,6 +395,70 @@ nsgai_convert_addrinfo(const struct ares_addrinfo *src,
     return 0;
 }
 
+static int
+nsgai_synthesize_null_node_addrinfo(
+    const char *service, const struct addrinfo *hints, struct addrinfo **out)
+{
+    *out = NULL;
+
+    /* POSIX getaddrinfo requires at least one of node/service. */
+    if (service == NULL) {
+        return EAI_NONAME;
+    }
+
+    int family = hints ? hints->ai_family : AF_UNSPEC;
+    if (family != AF_INET && family != AF_INET6 && family != AF_UNSPEC) {
+        return EAI_FAMILY;
+    }
+
+    uint16_t port_n = 0;
+    int rc          = resolve_service(service, hints, &port_n);
+    if (rc != 0) {
+        return rc;
+    }
+
+    int socktype = hints ? hints->ai_socktype : 0;
+    int protocol = hints ? hints->ai_protocol : 0;
+    int passive  = (hints && (hints->ai_flags & AI_PASSIVE));
+
+    struct addrinfo *head = NULL;
+    struct addrinfo *tail = NULL;
+
+    if (family == AF_INET || family == AF_UNSPEC) {
+        struct in_addr v4;
+        v4.s_addr             = htonl(passive ? INADDR_ANY : INADDR_LOOPBACK);
+        struct addrinfo *node = new_ai_node(
+            AF_INET, socktype, protocol, &v4, sizeof(v4), port_n, NULL);
+        if (!node) {
+            return EAI_MEMORY;
+        }
+        head = tail = node;
+    }
+
+    if (family == AF_INET6 || family == AF_UNSPEC) {
+        struct in6_addr v6    = passive ? in6addr_any : in6addr_loopback;
+        struct addrinfo *node = new_ai_node(
+            AF_INET6, socktype, protocol, &v6, sizeof(v6), port_n, NULL);
+        if (!node) {
+            nsgai_freeaddrinfo(head);
+            return EAI_MEMORY;
+        }
+        if (!head) {
+            head = node;
+        } else {
+            tail->ai_next = node;
+        }
+        tail = node;
+    }
+
+    if (!head) {
+        return EAI_NONAME;
+    }
+
+    *out = head;
+    return 0;
+}
+
 /**
  * @brief Free addrinfo chain allocated by nsgai conversion helpers.
  */
@@ -602,6 +666,10 @@ do_getaddrinfo(const nsgai_ns_t *ns,
     const struct addrinfo *hints,
     struct addrinfo **res)
 {
+    if (node == NULL) {
+        return nsgai_synthesize_null_node_addrinfo(service, hints, res);
+    }
+
     nsgai_channel_t *ch = NULL;
     int rc              = nsgai_channel_create(ns, &ch);
     if (rc != ARES_SUCCESS) {

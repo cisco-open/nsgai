@@ -73,6 +73,17 @@ static struct {
      * returns ares_init_status (one shot). */
     int armed_ares_init;
     int ares_init_status;
+
+    /* ares_getaddrinfo(): capture call-site inputs and optionally
+     * short-circuit with a forced status (one shot). */
+    int armed_ares_getaddrinfo;
+    int ares_getaddrinfo_status;
+    int saw_ares_getaddrinfo;
+    int last_name_is_null;
+    int last_hints_is_null;
+    struct ares_addrinfo_hints last_aih;
+    char last_name[128];
+    char last_service[32];
 } g_mock;
 
 static void
@@ -165,6 +176,50 @@ __wrap_ares_init_options(
         return st;
     }
     return __real_ares_init_options(channelptr, opts, optmask);
+}
+
+extern void
+__real_ares_getaddrinfo(ares_channel_t *,
+    const char *,
+    const char *,
+    const struct ares_addrinfo_hints *,
+    ares_addrinfo_callback,
+    void *);
+void
+__wrap_ares_getaddrinfo(ares_channel_t *channel,
+    const char *name,
+    const char *service,
+    const struct ares_addrinfo_hints *hints,
+    ares_addrinfo_callback callback,
+    void *arg)
+{
+    g_mock.saw_ares_getaddrinfo = 1;
+    g_mock.last_name_is_null    = (name == NULL);
+    g_mock.last_hints_is_null   = (hints == NULL);
+    if (hints) {
+        g_mock.last_aih = *hints;
+    } else {
+        memset(&g_mock.last_aih, 0, sizeof(g_mock.last_aih));
+    }
+
+    g_mock.last_name[0]    = '\0';
+    g_mock.last_service[0] = '\0';
+    if (name) {
+        snprintf(g_mock.last_name, sizeof(g_mock.last_name), "%s", name);
+    }
+    if (service) {
+        snprintf(
+            g_mock.last_service, sizeof(g_mock.last_service), "%s", service);
+    }
+
+    if (g_mock.armed_ares_getaddrinfo) {
+        int st                        = g_mock.ares_getaddrinfo_status;
+        g_mock.armed_ares_getaddrinfo = 0;
+        callback(arg, st, 0, NULL);
+        return;
+    }
+
+    __real_ares_getaddrinfo(channel, name, service, hints, callback, arg);
 }
 
 /* ------------------------------------------------------------------ *
@@ -697,6 +752,55 @@ t_do_getnameinfo_channel_fail(void **state)
     assert_int_equal(rc, EAI_MEMORY);
 }
 
+static void
+t_do_getaddrinfo_rsyslog_udp_hints(void **state)
+{
+    (void)state;
+
+    struct addrinfo *res = NULL;
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+
+    /* Server-style hints from rsyslog path: NULL node + PASSIVE +
+     * NUMERICSERV + DGRAM. */
+    g_mock.armed_ares_getaddrinfo  = 1;
+    g_mock.ares_getaddrinfo_status = ARES_ENOTFOUND;
+    hints.ai_flags                 = AI_PASSIVE | AI_NUMERICSERV;
+    hints.ai_family                = AF_INET;
+    hints.ai_socktype              = SOCK_DGRAM;
+    int rc = nsgai_getaddrinfo(NULL, "514", &hints, &res);
+    assert_int_equal(rc, 0);
+    assert_non_null(res);
+    assert_false(g_mock.saw_ares_getaddrinfo);
+    assert_int_equal(res->ai_family, AF_INET);
+    assert_int_equal(res->ai_socktype, SOCK_DGRAM);
+    assert_int_equal(
+        ((struct sockaddr_in *)res->ai_addr)->sin_port, htons(514));
+    assert_int_equal(((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr,
+        htonl(INADDR_ANY));
+    nsgai_freeaddrinfo(res);
+    res = NULL;
+
+    /* Client-style hints from rsyslog path: NUMERICSERV + DGRAM with
+     * non-NULL node. */
+    g_mock.armed_ares_getaddrinfo  = 1;
+    g_mock.ares_getaddrinfo_status = ARES_ENOTFOUND;
+    g_mock.saw_ares_getaddrinfo    = 0;
+    hints.ai_flags                 = AI_NUMERICSERV;
+    hints.ai_family                = AF_INET6;
+    hints.ai_socktype              = SOCK_DGRAM;
+    rc = nsgai_getaddrinfo("192.0.2.10", "5514", &hints, &res);
+    assert_int_equal(rc, EAI_NONAME);
+    assert_null(res);
+    assert_false(g_mock.last_name_is_null);
+    assert_int_equal(g_mock.last_aih.ai_family, AF_INET6);
+    assert_int_equal(g_mock.last_aih.ai_socktype, SOCK_DGRAM);
+    assert_int_equal(
+        g_mock.last_aih.ai_flags, nsgai_map_ai_flags(AI_NUMERICSERV));
+    assert_string_equal(g_mock.last_name, "192.0.2.10");
+    assert_string_equal(g_mock.last_service, "5514");
+}
+
 /* ------------------------------------------------------------------ *
  * Tests: public input-validation paths                                 *
  * ------------------------------------------------------------------ */
@@ -790,6 +894,7 @@ main(void)
         cmocka_unit_test_setup(t_channel_create_ares_init_fail, setup),
         cmocka_unit_test_setup(t_do_getaddrinfo_channel_fail, setup),
         cmocka_unit_test_setup(t_do_getnameinfo_channel_fail, setup),
+        cmocka_unit_test_setup(t_do_getaddrinfo_rsyslog_udp_hints, setup),
         cmocka_unit_test_setup(t_public_input_validation, setup),
         cmocka_unit_test_setup(t_gai_strerror_arms, setup),
     };

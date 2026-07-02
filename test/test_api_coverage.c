@@ -164,6 +164,44 @@ test_canonname(void)
 }
 
 static int
+test_null_node_semantics(void)
+{
+    struct addrinfo hints = {0};
+    hints.ai_family       = AF_INET;
+    hints.ai_socktype     = SOCK_DGRAM;
+    hints.ai_flags        = AI_PASSIVE | AI_NUMERICSERV;
+
+    struct addrinfo *res = NULL;
+    int rc               = nsgai_getaddrinfo(NULL, "514", &hints, &res);
+    MUST(rc == 0);
+    MUST(res != NULL);
+    MUST(res->ai_family == AF_INET);
+    MUST(res->ai_socktype == SOCK_DGRAM);
+    MUST(((struct sockaddr_in *)res->ai_addr)->sin_port == htons(514));
+    MUST(((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr ==
+         htonl(INADDR_ANY));
+    nsgai_freeaddrinfo(res);
+
+    /* Without AI_PASSIVE, NULL node should resolve to loopback. */
+    hints.ai_flags = AI_NUMERICSERV;
+    res            = NULL;
+    rc             = nsgai_getaddrinfo(NULL, "514", &hints, &res);
+    MUST(rc == 0);
+    MUST(res != NULL);
+    MUST(((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr ==
+         htonl(INADDR_LOOPBACK));
+    nsgai_freeaddrinfo(res);
+
+    /* POSIX: both node and service NULL is invalid. */
+    res = NULL;
+    rc  = nsgai_getaddrinfo(NULL, NULL, &hints, &res);
+    MUST(rc == EAI_NONAME);
+    MUST(res == NULL);
+
+    return 0;
+}
+
+static int
 test_getnameinfo(void)
 {
     /* IPv4 numeric host. */
@@ -317,6 +355,9 @@ main(void)
         return 1;
     }
     if (test_canonname()) {
+        return 1;
+    }
+    if (test_null_node_semantics()) {
         return 1;
     }
     if (test_getnameinfo()) {
