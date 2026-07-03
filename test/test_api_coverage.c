@@ -255,15 +255,17 @@ test_explicit_input_validation(void)
 {
     struct addrinfo *res = NULL;
 
-    /* NULL ns_name. */
+    /* NULL ns_name -> falls back to implicit (current namespace) resolution. */
     int rc = nsgai_getaddrinfo_ns(NULL, "localhost", NULL, NULL, &res);
-    MUST(rc == EAI_SYSTEM);
-    MUST(errno == EINVAL);
+    MUST(rc == 0); /* Should succeed in current namespace. */
+    nsgai_freeaddrinfo(res);
+    res = NULL;
 
-    /* Negative fd. */
+    /* Negative fd -> falls back to implicit resolution. */
     rc = nsgai_getaddrinfo_nsfd(-1, "localhost", NULL, NULL, &res);
-    MUST(rc == EAI_SYSTEM);
-    MUST(errno == EINVAL);
+    MUST(rc == 0); /* Should succeed in current namespace. */
+    nsgai_freeaddrinfo(res);
+    res = NULL;
 
     /* Non-existent ns name -> resolve_explicit_name fails. */
     rc =
@@ -277,13 +279,15 @@ test_explicit_input_validation(void)
     sa.sin_addr.s_addr = htonl(0x7f000001);
     char host[64];
 
+    /* NULL ns_name falls back to implicit. */
     rc = nsgai_getnameinfo_ns(NULL, (struct sockaddr *)&sa, sizeof(sa), host,
         sizeof(host), NULL, 0, NI_NUMERICHOST);
-    MUST(rc == EAI_SYSTEM);
+    MUST(rc == 0); /* Should succeed. */
 
+    /* Negative fd falls back to implicit. */
     rc = nsgai_getnameinfo_nsfd(-1, (struct sockaddr *)&sa, sizeof(sa), host,
         sizeof(host), NULL, 0, NI_NUMERICHOST);
-    MUST(rc == EAI_SYSTEM);
+    MUST(rc == 0); /* Should succeed. */
 
     return 0;
 }

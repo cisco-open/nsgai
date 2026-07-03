@@ -739,13 +739,16 @@ nsgai_getaddrinfo_ns(const char *ns_name,
     const struct addrinfo *hints,
     struct addrinfo **res)
 {
-    if (!ns_name) {
-        errno = EINVAL;
-        return EAI_SYSTEM;
-    }
     nsgai_ns_t ns;
-    if (nsgai_ns_resolve_explicit_name(ns_name, &ns) != 0) {
-        return EAI_SYSTEM;
+    /* NULL namespace means resolve in the current (caller's) namespace. */
+    if (ns_name == NULL) {
+        if (nsgai_ns_resolve_implicit(&ns) != 0) {
+            return EAI_SYSTEM;
+        }
+    } else {
+        if (nsgai_ns_resolve_explicit_name(ns_name, &ns) != 0) {
+            return EAI_SYSTEM;
+        }
     }
     int rc = do_getaddrinfo(&ns, node, service, hints, res);
     nsgai_ns_release(&ns);
@@ -759,13 +762,16 @@ nsgai_getaddrinfo_nsfd(int ns_fd,
     const struct addrinfo *hints,
     struct addrinfo **res)
 {
-    if (ns_fd < 0) {
-        errno = EINVAL;
-        return EAI_SYSTEM;
-    }
     nsgai_ns_t ns;
-    if (nsgai_ns_resolve_explicit_fd(ns_fd, &ns) != 0) {
-        return EAI_SYSTEM;
+    /* Negative fd means resolve in the current (caller's) namespace. */
+    if (ns_fd < 0) {
+        if (nsgai_ns_resolve_implicit(&ns) != 0) {
+            return EAI_SYSTEM;
+        }
+    } else {
+        if (nsgai_ns_resolve_explicit_fd(ns_fd, &ns) != 0) {
+            return EAI_SYSTEM;
+        }
     }
     int rc = do_getaddrinfo(&ns, node, service, hints, res);
     nsgai_ns_release(&ns);
@@ -868,13 +874,16 @@ nsgai_getnameinfo_ns(const char *ns_name,
     socklen_t servlen,
     int flags)
 {
-    if (!ns_name) {
-        errno = EINVAL;
-        return EAI_SYSTEM;
-    }
     nsgai_ns_t ns;
-    if (nsgai_ns_resolve_explicit_name(ns_name, &ns) != 0) {
-        return EAI_SYSTEM;
+    /* NULL namespace means resolve in the current (caller's) namespace. */
+    if (ns_name == NULL) {
+        if (nsgai_ns_resolve_implicit(&ns) != 0) {
+            return EAI_SYSTEM;
+        }
+    } else {
+        if (nsgai_ns_resolve_explicit_name(ns_name, &ns) != 0) {
+            return EAI_SYSTEM;
+        }
     }
     int rc =
         do_getnameinfo(&ns, sa, salen, host, hostlen, serv, servlen, flags);
@@ -892,13 +901,16 @@ nsgai_getnameinfo_nsfd(int ns_fd,
     socklen_t servlen,
     int flags)
 {
-    if (ns_fd < 0) {
-        errno = EINVAL;
-        return EAI_SYSTEM;
-    }
     nsgai_ns_t ns;
-    if (nsgai_ns_resolve_explicit_fd(ns_fd, &ns) != 0) {
-        return EAI_SYSTEM;
+    /* Negative fd means resolve in the current (caller's) namespace. */
+    if (ns_fd < 0) {
+        if (nsgai_ns_resolve_implicit(&ns) != 0) {
+            return EAI_SYSTEM;
+        }
+    } else {
+        if (nsgai_ns_resolve_explicit_fd(ns_fd, &ns) != 0) {
+            return EAI_SYSTEM;
+        }
     }
     int rc =
         do_getnameinfo(&ns, sa, salen, host, hostlen, serv, servlen, flags);

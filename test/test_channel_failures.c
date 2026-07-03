@@ -189,9 +189,11 @@ test_fcntl_dup_fail_in_cache_build(void)
 static int
 test_resolve_explicit_name_invalid(void)
 {
-    /* Drive validate_ns_name's negative branches via the public API. */
+    /* Drive validate_ns_name's negative branches via the public API.
+     * Note: NULL ns_name now falls back to implicit resolution (valid).
+     */
     struct addrinfo *r = NULL;
-    CHECK(nsgai_getaddrinfo_ns(NULL, "x", NULL, NULL, &r) == EAI_SYSTEM);
+    /* Empty string, slashes, parent-dir, and non-existent name should fail. */
     CHECK(nsgai_getaddrinfo_ns("", "x", NULL, NULL, &r) == EAI_SYSTEM);
     CHECK(nsgai_getaddrinfo_ns("a/b", "x", NULL, NULL, &r) == EAI_SYSTEM);
     CHECK(nsgai_getaddrinfo_ns("..", "x", NULL, NULL, &r) == EAI_SYSTEM);
@@ -203,8 +205,12 @@ test_resolve_explicit_name_invalid(void)
 static int
 test_resolve_explicit_fd_neg(void)
 {
+    /* Negative fd now falls back to implicit resolution (valid),
+     * so we test that it succeeds rather than failing. */
     struct addrinfo *r = NULL;
-    CHECK(nsgai_getaddrinfo_nsfd(-1, "x", NULL, NULL, &r) == EAI_SYSTEM);
+    int rc = nsgai_getaddrinfo_nsfd(-1, "localhost", NULL, NULL, &r);
+    CHECK(rc == 0);
+    nsgai_freeaddrinfo(r);
     return 0;
 }
 

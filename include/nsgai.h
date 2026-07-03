@@ -157,7 +157,8 @@ nsgai_gai_strerror(int errcode);
 /**
  * @brief Resolve node/service in a named target network namespace.
  *
- * @param ns_name Namespace name (as found under /var/run/netns).
+ * @param ns_name Namespace name (as found under /var/run/netns), or NULL
+ *        to resolve in the calling thread's current namespace.
  * @param node Hostname or numeric address, or NULL.
  * @param service Service name or decimal port string, or NULL.
  * @param hints Optional selection hints; may be NULL.
@@ -174,7 +175,8 @@ nsgai_getaddrinfo_ns(const char *ns_name,
 /**
  * @brief Reverse-resolve a socket address in a named target netns.
  *
- * @param ns_name Namespace name (as found under /var/run/netns).
+ * @param ns_name Namespace name (as found under /var/run/netns), or NULL
+ *        to resolve in the calling thread's current namespace.
  * @param sa Socket address to resolve.
  * @param salen Length of @p sa.
  * @param host Output host buffer (optional).
@@ -203,7 +205,8 @@ nsgai_getnameinfo_ns(const char *ns_name,
  * @brief Resolve node/service in a target netns referenced by fd.
  *
  * @param ns_fd Open netns fd (for example from /var/run/netns/<name> or
- *        /proc/<pid>/ns/net).
+ *        /proc/<pid>/ns/net), or -1 to resolve in the calling thread's
+ *        current namespace.
  * @param node Hostname or numeric address, or NULL.
  * @param service Service name or decimal port string, or NULL.
  * @param hints Optional selection hints; may be NULL.
@@ -220,7 +223,8 @@ nsgai_getaddrinfo_nsfd(int ns_fd,
 /**
  * @brief Reverse-resolve a socket address in a target netns by fd.
  *
- * @param ns_fd Open netns fd.
+ * @param ns_fd Open netns fd, or -1 to resolve in the calling thread's
+ *        current namespace.
  * @param sa Socket address to resolve.
  * @param salen Length of @p sa.
  * @param host Output host buffer (optional).

@@ -810,28 +810,33 @@ t_public_input_validation(void **state)
 {
     (void)state;
     struct addrinfo *res = NULL;
-    /* NULL ns name -> EAI_SYSTEM. */
-    assert_int_equal(
-        nsgai_getaddrinfo_ns(NULL, "h", NULL, NULL, &res), EAI_SYSTEM);
+    /* NULL ns name falls back to implicit (current namespace) resolution. */
+    assert_int_equal(nsgai_getaddrinfo_ns(NULL, "h", NULL, NULL, &res), 0);
+    nsgai_freeaddrinfo(res);
+    res = NULL;
     /* Bad ns name -> EAI_SYSTEM. */
     assert_int_equal(
         nsgai_getaddrinfo_ns("a/b", "h", NULL, NULL, &res), EAI_SYSTEM);
-    /* Negative fd -> EAI_SYSTEM. */
-    assert_int_equal(
-        nsgai_getaddrinfo_nsfd(-1, "h", NULL, NULL, &res), EAI_SYSTEM);
+    /* Negative fd falls back to implicit resolution. */
+    assert_int_equal(nsgai_getaddrinfo_nsfd(-1, "h", NULL, NULL, &res), 0);
+    nsgai_freeaddrinfo(res);
+    res = NULL;
 
     struct sockaddr_in sa = {0};
     sa.sin_family         = AF_INET;
     char h[16];
+    /* NULL ns_name for getnameinfo falls back to implicit. */
     assert_int_equal(nsgai_getnameinfo_ns(NULL, (struct sockaddr *)&sa,
                          sizeof(sa), h, sizeof(h), NULL, 0, 0),
-        EAI_SYSTEM);
+        0);
+    /* Bad ns_name fails. */
     assert_int_equal(nsgai_getnameinfo_ns("a/b", (struct sockaddr *)&sa,
                          sizeof(sa), h, sizeof(h), NULL, 0, 0),
         EAI_SYSTEM);
+    /* Negative fd for getnameinfo falls back to implicit. */
     assert_int_equal(nsgai_getnameinfo_nsfd(-1, (struct sockaddr *)&sa,
                          sizeof(sa), h, sizeof(h), NULL, 0, 0),
-        EAI_SYSTEM);
+        0);
 }
 
 static void
