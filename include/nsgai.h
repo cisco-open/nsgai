@@ -86,6 +86,32 @@ extern "C" {
 /** @brief Patch version of the nsgai public API. */
 #define NSGAI_VERSION_PATCH 0
 
+/**
+ * @brief Host/DNS lookup ordering policy for namespace-aware resolution.
+ *
+ * These policies apply to both forward and reverse host lookups. Service-name
+ * resolution remains process-global and follows libc semantics.
+ */
+typedef enum {
+    NSGAI_LOOKUP_HOSTS_FIRST = 0,
+    NSGAI_LOOKUP_DNS_FIRST   = 1,
+    NSGAI_LOOKUP_HOSTS_ONLY  = 2,
+    NSGAI_LOOKUP_DNS_ONLY    = 3,
+} nsgai_lookup_policy_t;
+
+/**
+ * @brief Set the process-wide host/DNS lookup policy used by libnsgai.
+ *
+ * This policy applies to subsequent synchronous and asynchronous lookups in
+ * the current process. Callers are expected to set it during process startup
+ * before concurrent resolution begins.
+ *
+ * @param policy Lookup ordering policy.
+ * @return 0 on success, otherwise EAI_BADFLAGS for an unsupported value.
+ */
+int
+nsgai_set_lookup_policy(nsgai_lookup_policy_t policy);
+
 #ifdef __USE_GNU
 /**
  * @defgroup nsgai_async GNU-style asynchronous getaddrinfo

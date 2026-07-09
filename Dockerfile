@@ -20,7 +20,7 @@
 #   podman run --rm --privileged -v "$PWD":/src:Z -w /src nsgai-test:latest \
 #       /src/scripts/container-entrypoint.sh
 
-FROM fedora:41
+FROM fedora:44
 
 # Build + test dependencies. install_weak_deps off to keep image small.
 RUN dnf install -y --setopt=install_weak_deps=False \

@@ -12,6 +12,10 @@
  * so that the preload shim wins symbol resolution at startup.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -72,6 +76,38 @@ t_preload_gai_strerror(void **state)
     assert_true(*s != '\0');
 }
 
+static void
+t_preload_gnu_async_aliases(void **state)
+{
+    (void)state;
+
+    struct gaicb req;
+    struct gaicb *list[1];
+    struct addrinfo hints;
+    struct timespec timeout;
+
+    memset(&req, 0, sizeof(req));
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_flags  = AI_NUMERICHOST;
+    req.ar_name     = "127.0.0.1";
+    req.ar_request  = &hints;
+    list[0]         = &req;
+
+    /* Synchronous mode still flows through preload getaddrinfo_a alias. */
+    assert_int_equal(getaddrinfo_a(GAI_WAIT, list, 1, NULL), 0);
+    assert_int_equal(gai_error(&req), 0);
+    assert_non_null(req.ar_result);
+    freeaddrinfo(req.ar_result);
+
+    timeout.tv_sec  = 0;
+    timeout.tv_nsec = 1000000;
+    assert_int_equal(
+        gai_suspend((const struct gaicb *const *)list, 0, &timeout),
+        EAI_ALLDONE);
+    assert_int_equal(gai_cancel(&req), EAI_ALLDONE);
+}
+
 int
 main(void)
 {
@@ -79,6 +115,7 @@ main(void)
         cmocka_unit_test(t_preload_getaddrinfo),
         cmocka_unit_test(t_preload_getnameinfo),
         cmocka_unit_test(t_preload_gai_strerror),
+        cmocka_unit_test(t_preload_gnu_async_aliases),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

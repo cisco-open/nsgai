@@ -76,11 +76,17 @@ fi
 
 VALGRIND_CMD=()
 if [[ "${NSGAI_VALGRIND:-0}" = "1" ]]; then
-    if ! command -v valgrind >/dev/null 2>&1; then
-        echo "SKIP: NSGAI_VALGRIND=1 but valgrind not on PATH" >&2
+    VALGRIND_BIN="${NSGAI_VALGRIND_BIN:-}"
+    if [[ -z "$VALGRIND_BIN" ]]; then
+        if command -v valgrind >/dev/null 2>&1; then
+            VALGRIND_BIN="$(command -v valgrind)"
+        fi
+    fi
+    if [[ -z "$VALGRIND_BIN" || ! -x "$VALGRIND_BIN" ]]; then
+        echo "SKIP: NSGAI_VALGRIND=1 but no usable valgrind binary was found" >&2
         exit 77
     fi
-    VALGRIND_CMD=(valgrind --error-exitcode=1
+    VALGRIND_CMD=("$VALGRIND_BIN" --error-exitcode=1
                   --leak-check=full
                   --errors-for-leak-kinds=definite
                   --show-leak-kinds=definite

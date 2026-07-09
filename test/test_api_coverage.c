@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 
 #define MUST(expr)                                                             \
     do {                                                                       \
@@ -251,6 +252,67 @@ test_getnameinfo(void)
 }
 
 static int
+test_lookup_policy(void)
+{
+    struct addrinfo hints = {0};
+    hints.ai_family       = AF_INET;
+    struct addrinfo *res  = NULL;
+
+    int rc = nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_ONLY);
+    MUST(rc == 0);
+
+    rc = nsgai_getaddrinfo("localhost", NULL, &hints, &res);
+    MUST(rc == 0);
+    MUST(res != NULL);
+    nsgai_freeaddrinfo(res);
+    res = NULL;
+
+    rc = nsgai_set_lookup_policy(NSGAI_LOOKUP_DNS_ONLY);
+    MUST(rc == 0);
+
+    rc = nsgai_getaddrinfo("127.0.0.1", "514", &hints, &res);
+    MUST(rc == 0);
+    MUST(res != NULL);
+    MUST(((struct sockaddr_in *)res->ai_addr)->sin_port == htons(514));
+    nsgai_freeaddrinfo(res);
+
+    hints.ai_flags = AI_NUMERICHOST;
+    rc             = nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_ONLY);
+    MUST(rc == 0);
+    rc = nsgai_getaddrinfo("localhost", NULL, &hints, &res);
+    MUST(rc != 0);
+    hints.ai_flags = 0;
+
+    struct sockaddr_in sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family      = AF_INET;
+    sa.sin_addr.s_addr = htonl(0x7f000001);
+
+    char host[NI_MAXHOST];
+    char serv[NI_MAXSERV];
+    rc = nsgai_getnameinfo((struct sockaddr *)&sa, sizeof(sa), host,
+        sizeof(host), serv, sizeof(serv), NI_NUMERICSERV);
+    MUST(rc == 0);
+    MUST(host[0] != '\0');
+    MUST(strcmp(serv, "0") == 0);
+
+    rc = nsgai_set_lookup_policy(NSGAI_LOOKUP_DNS_ONLY);
+    MUST(rc == 0);
+    rc = nsgai_getnameinfo((struct sockaddr *)&sa, sizeof(sa), host,
+        sizeof(host), NULL, 0, NI_NUMERICHOST);
+    MUST(rc == 0);
+    MUST(strcmp(host, "127.0.0.1") == 0);
+
+    rc = nsgai_set_lookup_policy((nsgai_lookup_policy_t)99);
+    MUST(rc == EAI_BADFLAGS);
+
+    rc = nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_FIRST);
+    MUST(rc == 0);
+
+    return 0;
+}
+
+static int
 test_explicit_input_validation(void)
 {
     struct addrinfo *res = NULL;
@@ -343,6 +405,95 @@ test_overflow(void)
     return 0;
 }
 
+static int
+test_getnameinfo_service_and_family_edges(void)
+{
+    struct sockaddr_in sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_port   = htons(53);
+
+    char serv[NI_MAXSERV];
+    int rc = nsgai_getnameinfo((struct sockaddr *)&sa, sizeof(sa), NULL, 0,
+        serv, sizeof(serv), NI_NUMERICSERV);
+    MUST(rc == 0);
+    MUST(strcmp(serv, "53") == 0);
+
+    memset(serv, 0, sizeof(serv));
+    rc = nsgai_getnameinfo((struct sockaddr *)&sa, sizeof(sa), NULL, 0, serv,
+        sizeof(serv), NI_DGRAM);
+    MUST(rc == 0);
+    MUST(serv[0] != '\0');
+
+    struct sockaddr_storage bad;
+    memset(&bad, 0, sizeof(bad));
+    bad.ss_family = AF_UNSPEC;
+    rc = nsgai_getnameinfo((struct sockaddr *)&bad, sizeof(bad), NULL, 0, serv,
+        sizeof(serv), NI_NUMERICSERV);
+    MUST(rc == EAI_FAMILY);
+
+    return 0;
+}
+
+static int
+test_getnameinfo_hosts_nofqdn(void)
+{
+    FILE *fp = fopen("/etc/hosts", "r");
+    if (fp == NULL) {
+        return 0;
+    }
+
+    char line[512];
+    struct sockaddr_storage ss;
+    socklen_t sslen = 0;
+    int have_case   = 0;
+
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        char addr[128], host1[256];
+        if (line[0] == '#') {
+            continue;
+        }
+        if (sscanf(line, "%127s %255s", addr, host1) != 2) {
+            continue;
+        }
+        if (strchr(host1, '.') == NULL) {
+            continue;
+        }
+
+        memset(&ss, 0, sizeof(ss));
+        if (inet_pton(AF_INET, addr, &((struct sockaddr_in *)&ss)->sin_addr) ==
+            1) {
+            ((struct sockaddr_in *)&ss)->sin_family = AF_INET;
+            sslen     = sizeof(struct sockaddr_in);
+            have_case = 1;
+            break;
+        }
+        if (inet_pton(AF_INET6, addr,
+                &((struct sockaddr_in6 *)&ss)->sin6_addr) == 1) {
+            ((struct sockaddr_in6 *)&ss)->sin6_family = AF_INET6;
+            sslen     = sizeof(struct sockaddr_in6);
+            have_case = 1;
+            break;
+        }
+    }
+    fclose(fp);
+
+    if (!have_case) {
+        return 0;
+    }
+
+    MUST(nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_ONLY) == 0);
+
+    char host[NI_MAXHOST];
+    int rc = nsgai_getnameinfo((struct sockaddr *)&ss, sslen, host,
+        sizeof(host), NULL, 0, NI_NOFQDN | NI_NAMEREQD);
+    MUST(rc == 0);
+    MUST(strchr(host, '.') == NULL);
+
+    MUST(nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_FIRST) == 0);
+    return 0;
+}
+
 int
 main(void)
 {
@@ -367,6 +518,9 @@ main(void)
     if (test_getnameinfo()) {
         return 1;
     }
+    if (test_lookup_policy()) {
+        return 1;
+    }
     if (test_explicit_input_validation()) {
         return 1;
     }
@@ -377,6 +531,12 @@ main(void)
         return 1;
     }
     if (test_overflow()) {
+        return 1;
+    }
+    if (test_getnameinfo_service_and_family_edges()) {
+        return 1;
+    }
+    if (test_getnameinfo_hosts_nofqdn()) {
         return 1;
     }
     printf("api coverage tests passed\n");

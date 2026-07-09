@@ -75,6 +75,10 @@ static struct {
     int armed_ai;
     int ai_status;
     struct ares_addrinfo *ai_result;
+
+    int armed_getnameinfo;
+    int getnameinfo_rc;
+    char getnameinfo_host[NI_MAXHOST];
 } g;
 
 static void
@@ -125,6 +129,40 @@ __wrap_ares_getaddrinfo(ares_channel_t *c,
         return;
     }
     __real_ares_getaddrinfo(c, name, service, hints, cb, arg);
+}
+
+extern int
+__real_nsgai_getnameinfo(const struct sockaddr *,
+    socklen_t,
+    char *,
+    socklen_t,
+    char *,
+    socklen_t,
+    int);
+int
+__wrap_nsgai_getnameinfo(const struct sockaddr *sa,
+    socklen_t salen,
+    char *host,
+    socklen_t hostlen,
+    char *serv,
+    socklen_t servlen,
+    int flags)
+{
+    if (g.armed_getnameinfo) {
+        g.armed_getnameinfo = 0;
+        if (g.getnameinfo_rc == 0 && host != NULL && hostlen > 0) {
+            snprintf(host, hostlen, "%s",
+                g.getnameinfo_host[0] ? g.getnameinfo_host : "wrapped.local");
+        }
+        (void)sa;
+        (void)salen;
+        (void)serv;
+        (void)servlen;
+        (void)flags;
+        return g.getnameinfo_rc;
+    }
+    return __real_nsgai_getnameinfo(
+        sa, salen, host, hostlen, serv, servlen, flags);
 }
 
 /* ------------------------------------------------------------------ *
@@ -326,6 +364,288 @@ test_gethostbyaddr_bad_v6_len(void)
     return 0;
 }
 
+static int
+test_gethostbyname4_success_and_ttl(void)
+{
+    struct gaih_addrtuple *at = NULL;
+    char buf[4096];
+    int err = 0, herr = 0;
+    int32_t ttl        = -1;
+    enum nss_status st = _nss_nsgai_gethostbyname4_r(
+        "localhost", &at, buf, sizeof(buf), &err, &herr, &ttl);
+    CHECK(st == NSS_STATUS_SUCCESS);
+    CHECK(at != NULL);
+    CHECK(at->family == AF_INET || at->family == AF_INET6);
+    CHECK(ttl >= 0);
+    return 0;
+}
+
+static int
+test_gethostbyaddr_success_and_addr2(void)
+{
+    uint8_t v4[4] = {127, 0, 0, 1};
+    struct hostent he;
+    char buf[4096];
+    int err = 0, herr = 0;
+
+    enum nss_status st = _nss_nsgai_gethostbyaddr_r(
+        v4, 4, AF_INET, &he, buf, sizeof(buf), &err, &herr);
+    CHECK(st == NSS_STATUS_SUCCESS);
+    CHECK(he.h_name != NULL && he.h_name[0] != '\0');
+    CHECK(he.h_addrtype == AF_INET);
+    CHECK(he.h_length == 4);
+    CHECK(he.h_addr_list != NULL && he.h_addr_list[0] != NULL);
+
+    int32_t ttl = -1;
+    st          = _nss_nsgai_gethostbyaddr2_r(
+        v4, 4, AF_INET, &he, buf, sizeof(buf), &err, &herr, &ttl);
+    CHECK(st == NSS_STATUS_SUCCESS);
+    CHECK(ttl == 0);
+    return 0;
+}
+
+static int
+test_gethostbyname_wrapper_success(void)
+{
+    struct hostent he;
+    char buf[4096];
+    int err = 0, herr = 0;
+    enum nss_status st = _nss_nsgai_gethostbyname_r(
+        "localhost", &he, buf, sizeof(buf), &err, &herr);
+    CHECK(st == NSS_STATUS_SUCCESS);
+    CHECK(he.h_name != NULL && he.h_name[0] != '\0');
+    return 0;
+}
+
+static int
+test_gethostbyname2_bad_family(void)
+{
+    struct hostent he;
+    char buf[4096];
+    int err = 0, herr = 0;
+    enum nss_status st = _nss_nsgai_gethostbyname2_r(
+        "localhost", AF_UNIX, &he, buf, sizeof(buf), &err, &herr);
+    CHECK(st == NSS_STATUS_UNAVAIL);
+    CHECK(err == EAFNOSUPPORT);
+    return 0;
+}
+
+static int
+test_gethostbyname2_success_v6(void)
+{
+    struct hostent he;
+    char buf[4096];
+    int err = 0, herr = 0;
+    enum nss_status st = _nss_nsgai_gethostbyname2_r(
+        "localhost", AF_INET6, &he, buf, sizeof(buf), &err, &herr);
+    if (st != NSS_STATUS_SUCCESS) {
+        /* Environment may not provide IPv6 localhost data. */
+        return 0;
+    }
+    CHECK(he.h_addrtype == AF_INET6);
+    CHECK(he.h_length == 16);
+    CHECK(he.h_addr_list != NULL && he.h_addr_list[0] != NULL);
+    return 0;
+}
+
+static int
+test_gethostbyname2_no_matching_family_nodes(void)
+{
+    reset();
+
+    struct ares_addrinfo *ai = calloc(1, sizeof(*ai));
+    CHECK(ai != NULL);
+    struct ares_addrinfo_node *node = calloc(1, sizeof(*node));
+    CHECK(node != NULL);
+    struct sockaddr_in sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family      = AF_INET;
+    sa.sin_addr.s_addr = htonl(0x7f000001);
+
+    node->ai_family = AF_INET;
+    node->ai_addr   = (struct sockaddr *)calloc(1, sizeof(sa));
+    CHECK(node->ai_addr != NULL);
+    memcpy(node->ai_addr, &sa, sizeof(sa));
+    node->ai_addrlen = sizeof(sa);
+    ai->nodes        = node;
+
+    g.armed_ai  = 1;
+    g.ai_status = ARES_SUCCESS;
+    g.ai_result = ai;
+
+    struct hostent he;
+    char buf[4096];
+    int err = 0, herr = 0;
+    enum nss_status st = _nss_nsgai_gethostbyname2_r(
+        "localhost", AF_INET6, &he, buf, sizeof(buf), &err, &herr);
+    CHECK(st == NSS_STATUS_NOTFOUND);
+    CHECK(herr == HOST_NOT_FOUND);
+
+    return 0;
+}
+
+static int
+test_gethostbyaddr_error_mappings_wrapped(void)
+{
+    uint8_t v4[4] = {127, 0, 0, 1};
+    struct hostent he;
+    char buf[4096];
+    int err = 0, herr = 0;
+
+    reset();
+    g.armed_getnameinfo = 1;
+    g.getnameinfo_rc    = EAI_NONAME;
+    enum nss_status st  = _nss_nsgai_gethostbyaddr_r(
+        v4, 4, AF_INET, &he, buf, sizeof(buf), &err, &herr);
+    CHECK(st == NSS_STATUS_NOTFOUND);
+    CHECK(err == 0);
+    CHECK(herr == HOST_NOT_FOUND);
+
+    reset();
+    g.armed_getnameinfo = 1;
+    g.getnameinfo_rc    = EAI_AGAIN;
+    st                  = _nss_nsgai_gethostbyaddr_r(
+        v4, 4, AF_INET, &he, buf, sizeof(buf), &err, &herr);
+    CHECK(st == NSS_STATUS_TRYAGAIN);
+    CHECK(err == EAGAIN);
+    CHECK(herr == TRY_AGAIN);
+
+    reset();
+    g.armed_getnameinfo = 1;
+    g.getnameinfo_rc    = EAI_FAIL;
+    st                  = _nss_nsgai_gethostbyaddr_r(
+        v4, 4, AF_INET, &he, buf, sizeof(buf), &err, &herr);
+    CHECK(st == NSS_STATUS_UNAVAIL);
+    CHECK(err == EIO);
+    CHECK(herr == NO_RECOVERY);
+    return 0;
+}
+
+static int
+test_gethostbyaddr_ipv6_wrapped_success(void)
+{
+    uint8_t v6[16] = {0};
+    v6[15]         = 1;
+    struct hostent he;
+    char buf[4096];
+    int err = 0, herr = 0;
+
+    reset();
+    g.armed_getnameinfo = 1;
+    g.getnameinfo_rc    = 0;
+    snprintf(g.getnameinfo_host, sizeof(g.getnameinfo_host), "ip6-wrapped");
+
+    enum nss_status st = _nss_nsgai_gethostbyaddr_r(
+        v6, 16, AF_INET6, &he, buf, sizeof(buf), &err, &herr);
+    CHECK(st == NSS_STATUS_SUCCESS);
+    CHECK(he.h_addrtype == AF_INET6);
+    CHECK(he.h_length == 16);
+    CHECK(he.h_name != NULL && strcmp(he.h_name, "ip6-wrapped") == 0);
+    return 0;
+}
+
+static int
+test_gethostbyaddr_wrapped_erange(void)
+{
+    uint8_t v4[4] = {127, 0, 0, 1};
+    struct hostent he;
+    char buf[4];
+    int err = 0, herr = 0;
+
+    reset();
+    g.armed_getnameinfo = 1;
+    g.getnameinfo_rc    = 0;
+    snprintf(g.getnameinfo_host, sizeof(g.getnameinfo_host), "x");
+
+    enum nss_status st = _nss_nsgai_gethostbyaddr_r(
+        v4, 4, AF_INET, &he, buf, sizeof(buf), &err, &herr);
+    CHECK(st == NSS_STATUS_TRYAGAIN);
+    CHECK(err == ERANGE);
+    CHECK(herr == NETDB_INTERNAL);
+    return 0;
+}
+
+static int
+test_gethostbyname4_no_supported_nodes_notfound(void)
+{
+    reset();
+
+    struct ares_addrinfo *ai = calloc(1, sizeof(*ai));
+    CHECK(ai != NULL);
+    struct ares_addrinfo_node *node = calloc(1, sizeof(*node));
+    CHECK(node != NULL);
+
+    node->ai_family  = AF_UNSPEC;
+    node->ai_addrlen = sizeof(struct sockaddr_storage);
+    node->ai_addr    = calloc(1, node->ai_addrlen);
+    CHECK(node->ai_addr != NULL);
+    ai->nodes = node;
+
+    g.armed_ai  = 1;
+    g.ai_status = ARES_SUCCESS;
+    g.ai_result = ai;
+
+    struct gaih_addrtuple *at = NULL;
+    char buf[4096];
+    int err = 0, herr = 0;
+    int32_t ttl        = -1;
+    enum nss_status st = _nss_nsgai_gethostbyname4_r(
+        "wrapped.invalid", &at, buf, sizeof(buf), &err, &herr, &ttl);
+    CHECK(st == NSS_STATUS_NOTFOUND);
+    CHECK(err == 0);
+    CHECK(herr == HOST_NOT_FOUND);
+    return 0;
+}
+
+static int
+test_gethostbyname4_ttl_min_wrapped(void)
+{
+    reset();
+
+    struct ares_addrinfo *ai = calloc(1, sizeof(*ai));
+    CHECK(ai != NULL);
+
+    struct ares_addrinfo_node *n4 = calloc(1, sizeof(*n4));
+    CHECK(n4 != NULL);
+    struct sockaddr_in *sa4 = calloc(1, sizeof(*sa4));
+    CHECK(sa4 != NULL);
+    sa4->sin_family      = AF_INET;
+    sa4->sin_addr.s_addr = htonl(0x7f000001);
+    n4->ai_family        = AF_INET;
+    n4->ai_addr          = (struct sockaddr *)sa4;
+    n4->ai_addrlen       = sizeof(*sa4);
+    n4->ai_ttl           = 30;
+
+    struct ares_addrinfo_node *n6 = calloc(1, sizeof(*n6));
+    CHECK(n6 != NULL);
+    struct sockaddr_in6 *sa6 = calloc(1, sizeof(*sa6));
+    CHECK(sa6 != NULL);
+    sa6->sin6_family = AF_INET6;
+    CHECK(inet_pton(AF_INET6, "::1", &sa6->sin6_addr) == 1);
+    n6->ai_family  = AF_INET6;
+    n6->ai_addr    = (struct sockaddr *)sa6;
+    n6->ai_addrlen = sizeof(*sa6);
+    n6->ai_ttl     = 10;
+
+    n4->ai_next = n6;
+    ai->nodes   = n4;
+
+    g.armed_ai  = 1;
+    g.ai_status = ARES_SUCCESS;
+    g.ai_result = ai;
+
+    struct gaih_addrtuple *at = NULL;
+    char buf[4096];
+    int err = 0, herr = 0;
+    int32_t ttl        = 0;
+    enum nss_status st = _nss_nsgai_gethostbyname4_r(
+        "wrapped-ttl.invalid", &at, buf, sizeof(buf), &err, &herr, &ttl);
+    CHECK(st == NSS_STATUS_SUCCESS);
+    CHECK(at != NULL);
+    CHECK(ttl == 10);
+    return 0;
+}
+
 int
 main(void)
 {
@@ -360,6 +680,39 @@ main(void)
         return 1;
     }
     if (test_gethostbyaddr_bad_v6_len()) {
+        return 1;
+    }
+    if (test_gethostbyname4_success_and_ttl()) {
+        return 1;
+    }
+    if (test_gethostbyaddr_success_and_addr2()) {
+        return 1;
+    }
+    if (test_gethostbyname_wrapper_success()) {
+        return 1;
+    }
+    if (test_gethostbyname2_bad_family()) {
+        return 1;
+    }
+    if (test_gethostbyname2_success_v6()) {
+        return 1;
+    }
+    if (test_gethostbyname2_no_matching_family_nodes()) {
+        return 1;
+    }
+    if (test_gethostbyaddr_error_mappings_wrapped()) {
+        return 1;
+    }
+    if (test_gethostbyaddr_ipv6_wrapped_success()) {
+        return 1;
+    }
+    if (test_gethostbyaddr_wrapped_erange()) {
+        return 1;
+    }
+    if (test_gethostbyname4_no_supported_nodes_notfound()) {
+        return 1;
+    }
+    if (test_gethostbyname4_ttl_min_wrapped()) {
         return 1;
     }
     printf("nss failure-injection tests passed\n");

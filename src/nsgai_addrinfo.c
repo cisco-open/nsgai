@@ -17,6 +17,7 @@
 #include "nsgai_internal.h"
 
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <netdb.h>
@@ -24,8 +25,10 @@
 #include <poll.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -475,6 +478,413 @@ nsgai_freeaddrinfo(struct addrinfo *res)
     }
 }
 
+static const char *
+nsgai_hosts_path(const nsgai_ns_t *ns)
+{
+    if (ns != NULL && ns->hosts_path != NULL) {
+        return ns->hosts_path;
+    }
+    return "/etc/hosts";
+}
+
+static bool
+nsgai_policy_allows_hosts(nsgai_lookup_policy_t policy)
+{
+    return policy == NSGAI_LOOKUP_HOSTS_FIRST ||
+           policy == NSGAI_LOOKUP_DNS_FIRST ||
+           policy == NSGAI_LOOKUP_HOSTS_ONLY;
+}
+
+static bool
+nsgai_policy_hosts_first(nsgai_lookup_policy_t policy)
+{
+    return policy == NSGAI_LOOKUP_HOSTS_FIRST ||
+           policy == NSGAI_LOOKUP_HOSTS_ONLY;
+}
+
+static bool
+nsgai_policy_allows_dns(nsgai_lookup_policy_t policy)
+{
+    return policy == NSGAI_LOOKUP_HOSTS_FIRST ||
+           policy == NSGAI_LOOKUP_DNS_FIRST || policy == NSGAI_LOOKUP_DNS_ONLY;
+}
+
+static bool
+nsgai_policy_is_valid(nsgai_lookup_policy_t policy)
+{
+    switch (policy) {
+        case NSGAI_LOOKUP_HOSTS_FIRST:
+        case NSGAI_LOOKUP_DNS_FIRST:
+        case NSGAI_LOOKUP_HOSTS_ONLY:
+        case NSGAI_LOOKUP_DNS_ONLY: return true;
+    }
+    return false;
+}
+
+static _Atomic int g_lookup_policy = NSGAI_LOOKUP_HOSTS_FIRST;
+
+int
+nsgai_set_lookup_policy(nsgai_lookup_policy_t policy)
+{
+    if (!nsgai_policy_is_valid(policy)) {
+        return EAI_BADFLAGS;
+    }
+    atomic_store_explicit(&g_lookup_policy, (int)policy, memory_order_relaxed);
+    return 0;
+}
+
+static nsgai_lookup_policy_t
+nsgai_get_lookup_policy(void)
+{
+    return (nsgai_lookup_policy_t)atomic_load_explicit(
+        &g_lookup_policy, memory_order_relaxed);
+}
+
+static bool
+nsgai_addr_family_matches(int wanted, int actual)
+{
+    return wanted == AF_UNSPEC || wanted == actual;
+}
+
+static void
+nsgai_hosts_strip_comment(char *line)
+{
+    for (char *p = line; *p != '\0'; ++p) {
+        if (*p == '#') {
+            *p = '\0';
+            break;
+        }
+    }
+}
+
+static int
+nsgai_getline_token(char **cursor, char **out)
+{
+    char *p = *cursor;
+    while (*p != '\0' && isspace((unsigned char)*p)) {
+        ++p;
+    }
+    if (*p == '\0') {
+        *out    = NULL;
+        *cursor = p;
+        return 0;
+    }
+    char *start = p;
+    while (*p != '\0' && !isspace((unsigned char)*p)) {
+        ++p;
+    }
+    if (*p != '\0') {
+        *p++ = '\0';
+    }
+    *out    = start;
+    *cursor = p;
+    return 1;
+}
+
+static int
+nsgai_append_host_addrinfo(struct addrinfo **head,
+    struct addrinfo **tail,
+    int family,
+    const void *addr,
+    size_t addrlen,
+    uint16_t port_n,
+    const struct addrinfo *hints,
+    const char *canonname)
+{
+    int socktype          = hints ? hints->ai_socktype : 0;
+    int protocol          = hints ? hints->ai_protocol : 0;
+    struct addrinfo *node = new_ai_node(
+        family, socktype, protocol, addr, addrlen, port_n, canonname);
+    if (node == NULL) {
+        return EAI_MEMORY;
+    }
+    if (*head == NULL) {
+        *head = node;
+    } else {
+        (*tail)->ai_next = node;
+    }
+    *tail = node;
+    return 0;
+}
+
+static int
+nsgai_lookup_hosts_forward(const nsgai_ns_t *ns,
+    const char *node,
+    const char *service,
+    const struct addrinfo *hints,
+    struct addrinfo **out)
+{
+    *out     = NULL;
+    FILE *fp = fopen(nsgai_hosts_path(ns), "r");
+    if (fp == NULL) {
+        return EAI_NONAME;
+    }
+
+    uint16_t port_n = 0;
+    int rc          = resolve_service(service, hints, &port_n);
+    if (rc != 0) {
+        fclose(fp);
+        return rc;
+    }
+
+    struct addrinfo *head = NULL;
+    struct addrinfo *tail = NULL;
+    char *line            = NULL;
+    size_t cap            = 0;
+    int family_wanted     = hints ? hints->ai_family : AF_UNSPEC;
+    int want_canon        = hints && (hints->ai_flags & AI_CANONNAME);
+
+    while (getline(&line, &cap, fp) >= 0) {
+        nsgai_hosts_strip_comment(line);
+        char *cursor = line;
+        char *addr_s = NULL;
+        if (!nsgai_getline_token(&cursor, &addr_s)) {
+            continue;
+        }
+
+        struct in_addr addr4;
+        struct in6_addr addr6;
+        int family = AF_UNSPEC;
+        const void *addrptr;
+        size_t addrlen;
+        if (inet_pton(AF_INET, addr_s, &addr4) == 1) {
+            family  = AF_INET;
+            addrptr = &addr4;
+            addrlen = sizeof(addr4);
+        } else if (inet_pton(AF_INET6, addr_s, &addr6) == 1) {
+            family  = AF_INET6;
+            addrptr = &addr6;
+            addrlen = sizeof(addr6);
+        } else {
+            continue;
+        }
+        if (!nsgai_addr_family_matches(family_wanted, family)) {
+            continue;
+        }
+
+        char *host_tok = NULL;
+        char *canon    = NULL;
+        int matched    = 0;
+        while (nsgai_getline_token(&cursor, &host_tok)) {
+            if (canon == NULL) {
+                canon = host_tok;
+            }
+            if (strcasecmp(host_tok, node) == 0) {
+                matched = 1;
+                break;
+            }
+        }
+        if (!matched) {
+            continue;
+        }
+
+        rc = nsgai_append_host_addrinfo(&head, &tail, family, addrptr, addrlen,
+            port_n, hints, (head == NULL && want_canon) ? canon : NULL);
+        if (rc != 0) {
+            nsgai_freeaddrinfo(head);
+            free(line);
+            fclose(fp);
+            return rc;
+        }
+    }
+
+    free(line);
+    fclose(fp);
+    if (head == NULL) {
+        return EAI_NONAME;
+    }
+    *out = head;
+    return 0;
+}
+
+static int
+nsgai_trim_no_fqdn(char *host)
+{
+    char *dot = strchr(host, '.');
+    if (dot != NULL) {
+        *dot = '\0';
+    }
+    return 0;
+}
+
+static int
+nsgai_lookup_hosts_reverse(const nsgai_ns_t *ns,
+    const struct sockaddr *sa,
+    socklen_t salen,
+    char *host,
+    socklen_t hostlen,
+    int flags)
+{
+    (void)salen;
+    FILE *fp = fopen(nsgai_hosts_path(ns), "r");
+    if (fp == NULL) {
+        return EAI_NONAME;
+    }
+
+    int family = sa->sa_family;
+    char *line = NULL;
+    size_t cap = 0;
+    int rc     = EAI_NONAME;
+
+    while (getline(&line, &cap, fp) >= 0) {
+        nsgai_hosts_strip_comment(line);
+        char *cursor = line;
+        char *addr_s = NULL;
+        if (!nsgai_getline_token(&cursor, &addr_s)) {
+            continue;
+        }
+
+        int matched = 0;
+        if (family == AF_INET) {
+            struct in_addr want = ((const struct sockaddr_in *)sa)->sin_addr;
+            struct in_addr got;
+            matched = inet_pton(AF_INET, addr_s, &got) == 1 &&
+                      memcmp(&want, &got, sizeof(got)) == 0;
+        } else if (family == AF_INET6) {
+            struct in6_addr want = ((const struct sockaddr_in6 *)sa)->sin6_addr;
+            struct in6_addr got;
+            matched = inet_pton(AF_INET6, addr_s, &got) == 1 &&
+                      memcmp(&want, &got, sizeof(got)) == 0;
+        }
+        if (!matched) {
+            continue;
+        }
+
+        char *host_tok = NULL;
+        if (!nsgai_getline_token(&cursor, &host_tok) || host_tok == NULL) {
+            continue;
+        }
+        if (flags & NI_NOFQDN) {
+            nsgai_trim_no_fqdn(host_tok);
+        }
+        size_t need = strlen(host_tok) + 1;
+        if (need > hostlen) {
+            rc = EAI_OVERFLOW;
+        } else {
+            memcpy(host, host_tok, need);
+            rc = 0;
+        }
+        break;
+    }
+
+    free(line);
+    fclose(fp);
+    return rc;
+}
+
+static int
+nsgai_numeric_node_to_addrinfo(const char *node,
+    const char *service,
+    const struct addrinfo *hints,
+    struct addrinfo **out)
+{
+    *out = NULL;
+
+    int family_wanted = hints ? hints->ai_family : AF_UNSPEC;
+    uint16_t port_n   = 0;
+    int rc            = resolve_service(service, hints, &port_n);
+    if (rc != 0) {
+        return rc;
+    }
+
+    struct addrinfo *head = NULL;
+    struct addrinfo *tail = NULL;
+    struct in_addr addr4;
+    if (nsgai_addr_family_matches(family_wanted, AF_INET) &&
+        inet_pton(AF_INET, node, &addr4) == 1) {
+        rc = nsgai_append_host_addrinfo(
+            &head, &tail, AF_INET, &addr4, sizeof(addr4), port_n, hints, NULL);
+        if (rc != 0) {
+            return rc;
+        }
+    }
+
+    struct in6_addr addr6;
+    if (nsgai_addr_family_matches(family_wanted, AF_INET6) &&
+        inet_pton(AF_INET6, node, &addr6) == 1) {
+        rc = nsgai_append_host_addrinfo(
+            &head, &tail, AF_INET6, &addr6, sizeof(addr6), port_n, hints, NULL);
+        if (rc != 0) {
+            nsgai_freeaddrinfo(head);
+            return rc;
+        }
+    }
+
+    if (head == NULL) {
+        return EAI_NONAME;
+    }
+    *out = head;
+    return 0;
+}
+
+static int
+nsgai_format_numeric_host(
+    const struct sockaddr *sa, char *host, socklen_t hostlen)
+{
+    const void *addr = NULL;
+    if (sa->sa_family == AF_INET) {
+        addr = &((const struct sockaddr_in *)sa)->sin_addr;
+    } else if (sa->sa_family == AF_INET6) {
+        addr = &((const struct sockaddr_in6 *)sa)->sin6_addr;
+    } else {
+        return EAI_FAMILY;
+    }
+    return inet_ntop(sa->sa_family, addr, host, hostlen) != NULL ? 0
+                                                                 : EAI_OVERFLOW;
+}
+
+static int
+nsgai_format_service(
+    const struct sockaddr *sa, char *serv, socklen_t servlen, int flags)
+{
+    if (serv == NULL || servlen == 0) {
+        return 0;
+    }
+
+    uint16_t port_n = 0;
+    if (sa->sa_family == AF_INET) {
+        port_n = ((const struct sockaddr_in *)sa)->sin_port;
+    } else if (sa->sa_family == AF_INET6) {
+        port_n = ((const struct sockaddr_in6 *)sa)->sin6_port;
+    } else {
+        return EAI_FAMILY;
+    }
+
+    unsigned port = ntohs(port_n);
+    if (flags & NI_NUMERICSERV) {
+        char buf[16];
+        int n = snprintf(buf, sizeof(buf), "%u", port);
+        if (n < 0 || (size_t)n + 1 > servlen) {
+            return EAI_OVERFLOW;
+        }
+        memcpy(serv, buf, (size_t)n + 1);
+        return 0;
+    }
+
+    const char *proto = (flags & NI_DGRAM) ? "udp" : "tcp";
+    struct servent se;
+    struct servent *result = NULL;
+    char buf[1024];
+    if (getservbyport_r((int)port_n, proto, &se, buf, sizeof(buf), &result) !=
+            0 ||
+        result == NULL) {
+        char nbuf[16];
+        int n = snprintf(nbuf, sizeof(nbuf), "%u", port);
+        if (n < 0 || (size_t)n + 1 > servlen) {
+            return EAI_OVERFLOW;
+        }
+        memcpy(serv, nbuf, (size_t)n + 1);
+        return 0;
+    }
+
+    size_t need = strlen(result->s_name) + 1;
+    if (need > servlen) {
+        return EAI_OVERFLOW;
+    }
+    memcpy(serv, result->s_name, need);
+    return 0;
+}
+
 /* Synchronous wait infrastructure */
 
 typedef struct {
@@ -660,7 +1070,7 @@ sync_wait(sync_t *s, ares_channel_t *channel)
  */
 
 static int
-do_getaddrinfo(const nsgai_ns_t *ns,
+do_dns_getaddrinfo(const nsgai_ns_t *ns,
     const char *node,
     const char *service,
     const struct addrinfo *hints,
@@ -670,8 +1080,11 @@ do_getaddrinfo(const nsgai_ns_t *ns,
         return nsgai_synthesize_null_node_addrinfo(service, hints, res);
     }
 
+    nsgai_ns_t dns_ns = *ns;
+    dns_ns.hosts_path = NULL;
+
     nsgai_channel_t *ch = NULL;
-    int rc              = nsgai_channel_create(ns, &ch);
+    int rc              = nsgai_channel_create(&dns_ns, &ch);
     if (rc != ARES_SUCCESS) {
         if (rc == ARES_ENOMEM) {
             return EAI_MEMORY;
@@ -715,6 +1128,50 @@ do_getaddrinfo(const nsgai_ns_t *ns,
     return eai;
 }
 
+static int
+do_getaddrinfo(const nsgai_ns_t *ns,
+    const char *node,
+    const char *service,
+    const struct addrinfo *hints,
+    nsgai_lookup_policy_t policy,
+    struct addrinfo **res)
+{
+    *res = NULL;
+    if (node == NULL) {
+        return nsgai_synthesize_null_node_addrinfo(service, hints, res);
+    }
+
+    int rc = nsgai_numeric_node_to_addrinfo(node, service, hints, res);
+    if (rc == 0) {
+        return 0;
+    }
+    if (hints != NULL && (hints->ai_flags & AI_NUMERICHOST)) {
+        return rc;
+    }
+    if (rc != EAI_NONAME) {
+        return rc;
+    }
+
+    if (nsgai_policy_hosts_first(policy) && nsgai_policy_allows_hosts(policy)) {
+        rc = nsgai_lookup_hosts_forward(ns, node, service, hints, res);
+        if (rc == 0 || policy == NSGAI_LOOKUP_HOSTS_ONLY) {
+            return rc;
+        }
+    }
+
+    if (nsgai_policy_allows_dns(policy)) {
+        rc = do_dns_getaddrinfo(ns, node, service, hints, res);
+        if (rc == 0 || !nsgai_policy_allows_hosts(policy) ||
+            policy == NSGAI_LOOKUP_HOSTS_FIRST) {
+            return rc;
+        }
+    } else {
+        return EAI_NONAME;
+    }
+
+    return nsgai_lookup_hosts_forward(ns, node, service, hints, res);
+}
+
 /* Public getaddrinfo API */
 
 int
@@ -727,7 +1184,8 @@ nsgai_getaddrinfo(const char *node,
     if (nsgai_ns_resolve_implicit(&ns) != 0) {
         return EAI_SYSTEM;
     }
-    int rc = do_getaddrinfo(&ns, node, service, hints, res);
+    nsgai_lookup_policy_t policy = nsgai_get_lookup_policy();
+    int rc = do_getaddrinfo(&ns, node, service, hints, policy, res);
     nsgai_ns_release(&ns);
     return rc;
 }
@@ -750,7 +1208,8 @@ nsgai_getaddrinfo_ns(const char *ns_name,
             return EAI_SYSTEM;
         }
     }
-    int rc = do_getaddrinfo(&ns, node, service, hints, res);
+    nsgai_lookup_policy_t policy = nsgai_get_lookup_policy();
+    int rc = do_getaddrinfo(&ns, node, service, hints, policy, res);
     nsgai_ns_release(&ns);
     return rc;
 }
@@ -773,7 +1232,8 @@ nsgai_getaddrinfo_nsfd(int ns_fd,
             return EAI_SYSTEM;
         }
     }
-    int rc = do_getaddrinfo(&ns, node, service, hints, res);
+    nsgai_lookup_policy_t policy = nsgai_get_lookup_policy();
+    int rc = do_getaddrinfo(&ns, node, service, hints, policy, res);
     nsgai_ns_release(&ns);
     return rc;
 }
@@ -781,7 +1241,7 @@ nsgai_getaddrinfo_nsfd(int ns_fd,
 /* getnameinfo implementation */
 
 static int
-do_getnameinfo(const nsgai_ns_t *ns,
+do_dns_getnameinfo(const nsgai_ns_t *ns,
     const struct sockaddr *sa,
     socklen_t salen,
     char *host,
@@ -790,8 +1250,11 @@ do_getnameinfo(const nsgai_ns_t *ns,
     socklen_t servlen,
     int flags)
 {
+    nsgai_ns_t dns_ns = *ns;
+    dns_ns.hosts_path = NULL;
+
     nsgai_channel_t *ch = NULL;
-    int rc              = nsgai_channel_create(ns, &ch);
+    int rc              = nsgai_channel_create(&dns_ns, &ch);
     if (rc != ARES_SUCCESS) {
         return (rc == ARES_ENOMEM) ? EAI_MEMORY : EAI_SYSTEM;
     }
@@ -845,6 +1308,57 @@ do_getnameinfo(const nsgai_ns_t *ns,
     return eai;
 }
 
+static int
+do_getnameinfo(const nsgai_ns_t *ns,
+    const struct sockaddr *sa,
+    socklen_t salen,
+    char *host,
+    socklen_t hostlen,
+    char *serv,
+    socklen_t servlen,
+    int flags,
+    nsgai_lookup_policy_t policy)
+{
+    int rc = nsgai_format_service(sa, serv, servlen, flags);
+    if (rc != 0) {
+        return rc;
+    }
+
+    if (host == NULL || hostlen == 0) {
+        return 0;
+    }
+    if (flags & NI_NUMERICHOST) {
+        return nsgai_format_numeric_host(sa, host, hostlen);
+    }
+
+    if (nsgai_policy_hosts_first(policy) && nsgai_policy_allows_hosts(policy)) {
+        rc = nsgai_lookup_hosts_reverse(ns, sa, salen, host, hostlen, flags);
+        if (rc == 0 || policy == NSGAI_LOOKUP_HOSTS_ONLY) {
+            return rc;
+        }
+    }
+
+    if (nsgai_policy_allows_dns(policy)) {
+        rc = do_dns_getnameinfo(
+            ns, sa, salen, host, hostlen, NULL, 0, flags | NI_NUMERICSERV);
+        if (rc == 0 || !nsgai_policy_allows_hosts(policy) ||
+            policy == NSGAI_LOOKUP_HOSTS_FIRST) {
+            return rc;
+        }
+    } else {
+        return (flags & NI_NAMEREQD)
+                   ? EAI_NONAME
+                   : nsgai_format_numeric_host(sa, host, hostlen);
+    }
+
+    rc = nsgai_lookup_hosts_reverse(ns, sa, salen, host, hostlen, flags);
+    if (rc == 0) {
+        return 0;
+    }
+    return (flags & NI_NAMEREQD) ? rc
+                                 : nsgai_format_numeric_host(sa, host, hostlen);
+}
+
 int
 nsgai_getnameinfo(const struct sockaddr *sa,
     socklen_t salen,
@@ -858,8 +1372,9 @@ nsgai_getnameinfo(const struct sockaddr *sa,
     if (nsgai_ns_resolve_implicit(&ns) != 0) {
         return EAI_SYSTEM;
     }
-    int rc =
-        do_getnameinfo(&ns, sa, salen, host, hostlen, serv, servlen, flags);
+    nsgai_lookup_policy_t policy = nsgai_get_lookup_policy();
+    int rc                       = do_getnameinfo(
+        &ns, sa, salen, host, hostlen, serv, servlen, flags, policy);
     nsgai_ns_release(&ns);
     return rc;
 }
@@ -885,8 +1400,9 @@ nsgai_getnameinfo_ns(const char *ns_name,
             return EAI_SYSTEM;
         }
     }
-    int rc =
-        do_getnameinfo(&ns, sa, salen, host, hostlen, serv, servlen, flags);
+    nsgai_lookup_policy_t policy = nsgai_get_lookup_policy();
+    int rc                       = do_getnameinfo(
+        &ns, sa, salen, host, hostlen, serv, servlen, flags, policy);
     nsgai_ns_release(&ns);
     return rc;
 }
@@ -912,8 +1428,9 @@ nsgai_getnameinfo_nsfd(int ns_fd,
             return EAI_SYSTEM;
         }
     }
-    int rc =
-        do_getnameinfo(&ns, sa, salen, host, hostlen, serv, servlen, flags);
+    nsgai_lookup_policy_t policy = nsgai_get_lookup_policy();
+    int rc                       = do_getnameinfo(
+        &ns, sa, salen, host, hostlen, serv, servlen, flags, policy);
     nsgai_ns_release(&ns);
     return rc;
 }

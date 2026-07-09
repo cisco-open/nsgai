@@ -25,13 +25,22 @@ It ships three shared objects:
 
 | Shared object              | Purpose                                                  |
 |----------------------------|----------------------------------------------------------|
-| `libnsgai.so`              | Public C API: `nsgai_getaddrinfo`, `nsgai_getaddrinfo_ns`, `nsgai_getaddrinfo_nsfd`, `nsgai_getnameinfo*`, `nsgai_getaddrinfo_a*`, `nsgai_suspend`, `nsgai_error`, `nsgai_cancel`, `nsgai_freeaddrinfo`, `nsgai_gai_strerror`. Also defines the POSIX/GNU-named symbols (`getaddrinfo`, `getaddrinfo_a`, `gai_*`, …) as **weak** aliases — linking against `libnsgai` replaces libc's resolver. |
+| `libnsgai.so`              | Public C API: `nsgai_getaddrinfo*`, `nsgai_getnameinfo*`, `nsgai_getaddrinfo_a*`, `nsgai_suspend`, `nsgai_error`, `nsgai_cancel`, `nsgai_freeaddrinfo`, `nsgai_gai_strerror`, plus a process-wide `nsgai_set_lookup_policy()` setter for host-vs-DNS ordering. Also defines the POSIX/GNU-named symbols (`getaddrinfo`, `getaddrinfo_a`, `gai_*`, …) as **weak** aliases — linking against `libnsgai` replaces libc's resolver. |
 | `libnsgai_preload.so`      | `LD_PRELOAD` shim. **Unconditionally** forwards `getaddrinfo`/`freeaddrinfo`/`gai_strerror`/`getnameinfo` to `nsgai_*`. There is no fall-through to libc — preloading is opting in for the whole process. |
 | `libnss_nsgai.so.2`        | NSS module (`_nss_nsgai_gethostbyname[2/4]_r`, `_nss_nsgai_gethostbyaddr[2]_r`). Usable from `/etc/nsswitch.conf`. |
 
 ## API surface
 
 ```c
+typedef enum {
+    NSGAI_LOOKUP_HOSTS_FIRST = 0,
+    NSGAI_LOOKUP_DNS_FIRST   = 1,
+    NSGAI_LOOKUP_HOSTS_ONLY  = 2,
+    NSGAI_LOOKUP_DNS_ONLY    = 3,
+} nsgai_lookup_policy_t;
+
+int  nsgai_set_lookup_policy(nsgai_lookup_policy_t policy);
+
 /* Implicit: resolve in the *calling thread's* current network namespace. */
 int  nsgai_getaddrinfo(const char *node, const char *service,
                        const struct addrinfo *hints, struct addrinfo **res);
@@ -79,6 +88,20 @@ the synchronous API:
   meaning the calling thread's current namespace.
 * `nsgai_getaddrinfo_a_nsfd()` targets a namespace fd, with a negative
   fd meaning the calling thread's current namespace.
+
+The synchronous and asynchronous lookup entry points all use a single
+process-wide policy. `nsgai_set_lookup_policy()` changes that policy for
+subsequent requests. The built-in default is `NSGAI_LOOKUP_HOSTS_FIRST`.
+Supported policies are:
+
+* `NSGAI_LOOKUP_HOSTS_FIRST`: consult the namespace hosts file first,
+  then DNS.
+* `NSGAI_LOOKUP_DNS_FIRST`: consult DNS first, then the namespace hosts
+  file as fallback.
+* `NSGAI_LOOKUP_HOSTS_ONLY`: only consult the namespace hosts file,
+  apart from numeric address/service handling.
+* `NSGAI_LOOKUP_DNS_ONLY`: only consult DNS, with the namespace hosts
+  file disabled for that lookup.
 
 ## How the namespace is chosen
 
@@ -149,7 +172,6 @@ Requires CMake ≥ 3.16, a C11 compiler, and c-ares
 `ARES_OPT_EVENT_THREAD`; recent main is fine).
 
 ```sh
-cd /home/balsup/nsgai/main
 cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/c-ares/install/usr
 cmake --build build -j
 ctest --test-dir build --output-on-failure
@@ -184,7 +206,6 @@ For the full privileged test suite plus coverage report, use the project
 wrapper from the repository root:
 
 ```sh
-cd /home/balsup/nsgai/main
 bash scripts/run-container-tests.sh
 ```
 
@@ -192,19 +213,44 @@ This creates and uses `./build-container/` as a container-owned build
 tree. That directory is configured inside the container with source path
 `/src`, so do not reuse it as a normal host build tree with commands
 such as `cmake --build build-container` on the host. Use the regular
-`./build/` tree for host builds instead.
+`./build/` tree for host builds instead. The container entrypoint
+recreates `build-container/` on each run so image toolchain changes
+cannot leave behind stale objects or incompatible coverage metadata.
 
 If you want to reset the container build tree completely, remove it and
 rerun the wrapper:
 
 ```sh
-cd /home/balsup/nsgai/main
 podman unshare rm -rf build-container
 bash scripts/run-container-tests.sh
 ```
 
 With docker or rootful podman, plain `rm -rf build-container` is usually
 sufficient.
+
+The container image carries its own toolchain, including `clang-format`.
+If `nsgai_format_check` passes on the host but fails in the container
+or vice versa, first rebuild the image so the container toolchain matches
+the current `Dockerfile` more closely:
+
+```sh
+bash scripts/run-container-tests.sh --rebuild
+```
+
+Formatting differences across environments are usually caused by running
+different `clang-format` versions.
+
+For host-side coverage builds, you can force the reporting backend at
+configure time:
+
+```sh
+cmake -S . -B build-cov \
+    -DNSGAI_ENABLE_COVERAGE=ON \
+    -DNSGAI_COVERAGE_TOOL=gcovr
+```
+
+Valid values are `auto`, `lcov`, and `gcovr`. `auto` prefers
+`lcov`+`genhtml` when available and otherwise falls back to `gcovr`.
 
 ## Use as a direct replacement
 
@@ -290,9 +336,6 @@ in one process.
 
 * The service-name database (`/etc/services`) is not namespaced.
 * TTL plumbing through `_nss_nsgai_gethostbyname4_r` is minimal.
-* Reverse `getnameinfo` falls back to c-ares only — no per-namespace
-  `/etc/hosts` reverse search beyond what c-ares does via the
-  configured `hosts_path`.
 * ELF symbol visibility/versioning is enforced via `src/nsgai.map`
   (namespace `NSGAI_0`), but ABI compatibility checks are not yet
   automated in CI.

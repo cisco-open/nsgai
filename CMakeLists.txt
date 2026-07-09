@@ -15,9 +15,12 @@ option(NSGAI_BUILD_PRELOAD "Build LD_PRELOAD shim" ON)
 option(NSGAI_BUILD_NSS "Build NSS module" ON)
 option(NSGAI_BUILD_EXAMPLES "Build example tools (nsgai_adig)" ON)
 option(NSGAI_ENABLE_NETNS_TESTS
-       "Add integration tests that require root + ip netns" OFF)
+       "Register integration tests that require root + ip netns" ON)
 option(NSGAI_ENABLE_COVERAGE
        "Instrument library + tests with gcov/--coverage and add a 'coverage' target" OFF)
+set(NSGAI_COVERAGE_TOOL "auto" CACHE STRING
+    "Coverage report backend: auto, lcov, or gcovr")
+set_property(CACHE NSGAI_COVERAGE_TOOL PROPERTY STRINGS auto lcov gcovr)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -53,6 +56,10 @@ if(NSGAI_ENABLE_COVERAGE)
         message(WARNING
             "NSGAI_ENABLE_COVERAGE: untested with compiler "
             "'${CMAKE_C_COMPILER_ID}'; --coverage may not apply.")
+    endif()
+    if(NOT NSGAI_COVERAGE_TOOL MATCHES "^(auto|lcov|gcovr)$")
+        message(FATAL_ERROR
+            "NSGAI_COVERAGE_TOOL must be one of: auto, lcov, gcovr")
     endif()
     # Force an un-optimized build so line counts in the report are meaningful.
     # Users can override by setting -DCMAKE_BUILD_TYPE=... explicitly *and*
@@ -193,8 +200,17 @@ if(NSGAI_BUILD_TESTS)
         test/test_rsyslog_null_node_regression.c)
     target_link_libraries(test_rsyslog_null_node_regression PRIVATE nsgai)
 
-    add_executable(test_async_api test/test_async_api.c)
-    target_link_libraries(test_async_api PRIVATE nsgai pthread)
+    add_executable(test_async_api
+        test/test_async_api.c
+        $<TARGET_OBJECTS:nsgai_core>)
+    target_include_directories(test_async_api PRIVATE include src)
+    target_link_libraries(test_async_api PRIVATE ${CARES_TARGET} pthread)
+    target_link_options(test_async_api PRIVATE
+        "LINKER:--wrap=calloc"
+        "LINKER:--wrap=pthread_create"
+        "LINKER:--wrap=clock_gettime"
+        "LINKER:--wrap=pthread_cond_timedwait"
+    )
 
     # Coverage-focused test for the per-namespace channel cache.
     # Requires CAP_SYS_ADMIN for unshare(CLONE_NEWNET); self-skips
@@ -237,6 +253,7 @@ if(NSGAI_BUILD_TESTS)
         target_link_options(test_nss_failures PRIVATE
             "LINKER:--wrap=ares_init_options"
             "LINKER:--wrap=ares_getaddrinfo"
+            "LINKER:--wrap=nsgai_getnameinfo"
         )
     endif()
 
@@ -256,12 +273,23 @@ if(NSGAI_BUILD_TESTS)
     # process (cmocka, libc helpers) to be unaffected because each
     # wrapper defaults to passthrough.
     target_link_options(test_channel_mocks PRIVATE
+        "LINKER:--wrap=calloc"
         "LINKER:--wrap=socket"
         "LINKER:--wrap=setns"
         "LINKER:--wrap=open"
         "LINKER:--wrap=fcntl"
         "LINKER:--wrap=ares_init_options"
         "LINKER:--wrap=ares_getaddrinfo"
+        "LINKER:--wrap=ares_set_socket_functions_ex"
+        "LINKER:--wrap=pthread_mutex_lock"
+        "LINKER:--wrap=pthread_mutex_unlock"
+        "LINKER:--wrap=pthread_cond_wait"
+        "LINKER:--wrap=pthread_cond_signal"
+        "LINKER:--wrap=pthread_mutex_init"
+        "LINKER:--wrap=pthread_cond_init"
+        "LINKER:--wrap=pthread_mutex_destroy"
+        "LINKER:--wrap=pthread_cond_destroy"
+        "LINKER:--wrap=abort"
     )
 
     # Coverage-focused unit test for the NSS module.  Loads
@@ -380,6 +408,18 @@ if(NSGAI_BUILD_TESTS AND NSGAI_ENABLE_NETNS_TESTS AND NSGAI_BUILD_EXAMPLES)
         SKIP_RETURN_CODE 77
     )
 
+    add_test(
+        NAME nsgai_policy_netns_integration
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_policy_netns.sh
+                $<TARGET_FILE:nsgai_adig>
+    )
+    set_tests_properties(nsgai_policy_netns_integration PROPERTIES
+        ENVIRONMENT
+        "NSGAI_LIB_DIR=$<TARGET_FILE_DIR:nsgai>;NSGAI_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        FIXTURES_REQUIRED coredns
+        SKIP_RETURN_CODE 77
+    )
+
     if(VALGRIND_EXECUTABLE)
         add_test(
             NAME nsgai_dns_netns_integration_valgrind
@@ -390,7 +430,7 @@ if(NSGAI_BUILD_TESTS AND NSGAI_ENABLE_NETNS_TESTS AND NSGAI_BUILD_EXAMPLES)
         )
         set_tests_properties(nsgai_dns_netns_integration_valgrind PROPERTIES
             ENVIRONMENT
-            "NSGAI_LIB_DIR=$<TARGET_FILE_DIR:nsgai>;NSGAI_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR};NSGAI_VALGRIND=1"
+            "NSGAI_LIB_DIR=$<TARGET_FILE_DIR:nsgai>;NSGAI_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR};NSGAI_VALGRIND=1;NSGAI_VALGRIND_BIN=${VALGRIND_EXECUTABLE}"
             FIXTURES_REQUIRED coredns
             SKIP_RETURN_CODE 77
         )
@@ -441,26 +481,31 @@ if(NSGAI_ENABLE_COVERAGE)
         VERBATIM
     )
 
-    if(GCOVR_EXECUTABLE)
-        add_custom_target(coverage
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${_cov_dir}/html
-            COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-            COMMAND ${GCOVR_EXECUTABLE}
-                    --root ${CMAKE_CURRENT_SOURCE_DIR}
-                    --filter ${CMAKE_CURRENT_SOURCE_DIR}/src
-                    --filter ${CMAKE_CURRENT_SOURCE_DIR}/include
-                    --gcov-ignore-parse-errors=negative_hits.warn_once_per_file
-                    --html-details ${_cov_dir}/html/index.html
-                    --print-summary
-                    ${CMAKE_CURRENT_BINARY_DIR}
-            COMMAND ${CMAKE_COMMAND} -E echo
-                    "Coverage report: ${_cov_dir}/html/index.html"
-            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-            COMMENT "Running ctest and generating gcovr HTML coverage report"
-            VERBATIM
-            USES_TERMINAL
-        )
-    elseif(LCOV_EXECUTABLE AND GENHTML_EXECUTABLE)
+    set(_use_lcov FALSE)
+    set(_use_gcovr FALSE)
+    if(NSGAI_COVERAGE_TOOL STREQUAL "auto")
+        if(LCOV_EXECUTABLE AND GENHTML_EXECUTABLE)
+            set(_use_lcov TRUE)
+        elseif(GCOVR_EXECUTABLE)
+            set(_use_gcovr TRUE)
+        endif()
+    elseif(NSGAI_COVERAGE_TOOL STREQUAL "lcov")
+        if(LCOV_EXECUTABLE AND GENHTML_EXECUTABLE)
+            set(_use_lcov TRUE)
+        else()
+            message(FATAL_ERROR
+                "NSGAI_COVERAGE_TOOL=lcov requires both lcov and genhtml")
+        endif()
+    elseif(NSGAI_COVERAGE_TOOL STREQUAL "gcovr")
+        if(GCOVR_EXECUTABLE)
+            set(_use_gcovr TRUE)
+        else()
+            message(FATAL_ERROR
+                "NSGAI_COVERAGE_TOOL=gcovr requires gcovr")
+        endif()
+    endif()
+
+    if(_use_lcov)
         add_custom_target(coverage
             COMMAND ${CMAKE_COMMAND} -E make_directory ${_cov_dir}
             COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
@@ -493,17 +538,35 @@ if(NSGAI_ENABLE_COVERAGE)
             VERBATIM
             USES_TERMINAL
         )
+    elseif(_use_gcovr)
+        add_custom_target(coverage
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${_cov_dir}/html
+            COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+            COMMAND ${GCOVR_EXECUTABLE}
+                    --root ${CMAKE_CURRENT_SOURCE_DIR}
+                    --filter ${CMAKE_CURRENT_SOURCE_DIR}/src
+                    --filter ${CMAKE_CURRENT_SOURCE_DIR}/include
+                    --gcov-ignore-parse-errors=negative_hits.warn_once_per_file
+                    --html-details ${_cov_dir}/html/index.html
+                    --print-summary
+                    ${CMAKE_CURRENT_BINARY_DIR}
+            COMMAND ${CMAKE_COMMAND} -E echo
+                    "Coverage report: ${_cov_dir}/html/index.html"
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            COMMENT "Running ctest and generating gcovr HTML coverage report"
+            VERBATIM
+            USES_TERMINAL
+        )
     else()
         add_custom_target(coverage
             COMMAND ${CMAKE_COMMAND} -E echo
-                "ERROR: NSGAI_ENABLE_COVERAGE=ON but neither lcov+genhtml "
-                "nor gcovr were found. Install one of them and re-run "
-                "cmake to generate a report."
+                "ERROR: NSGAI_ENABLE_COVERAGE=ON but no usable coverage "
+                "backend was found for NSGAI_COVERAGE_TOOL=${NSGAI_COVERAGE_TOOL}."
             COMMAND ${CMAKE_COMMAND} -E false
             VERBATIM
         )
         message(WARNING
-            "NSGAI_ENABLE_COVERAGE=ON: lcov/genhtml and gcovr not found; "
+            "NSGAI_ENABLE_COVERAGE=ON: no usable coverage backend was found; "
             "'coverage' target will be a stub. .gcno/.gcda files will still "
             "be produced and can be inspected with gcov(1) manually.")
     endif()

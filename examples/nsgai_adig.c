@@ -8,7 +8,8 @@
  * by name (-n NS) or by an open file descriptor (-f FD).
  *
  * Usage:
- *   nsgai_adig [-4|-6] [-c] [-n NS_NAME | -f NS_FD] [-r] HOST [HOST...]
+ *   nsgai_adig [-4|-6] [-c] [-n NS_NAME | -f NS_FD] [-p POLICY] [-r]
+ *              HOST [HOST...]
  *
  * Options:
  *   -4         IPv4 only (AF_INET)
@@ -16,6 +17,8 @@
  *   -c         Request canonical name (AI_CANONNAME)
  *   -n NAME    Resolve in netns /var/run/netns/NAME
  *   -f FD      Resolve in the netns referred to by FD (must be open)
+ *   -p POLICY  Set libnsgai lookup policy:
+ *                hosts-first | dns-first | hosts-only | dns-only
  *   -r         Perform a reverse lookup on each argument
  *              (arguments must then be numeric IPv4/IPv6 addresses)
  *
@@ -109,21 +112,45 @@ do_reverse(const char *arg, int ns_fd, const char *ns_name)
 static void
 usage(FILE *out)
 {
-    fprintf(out, "Usage: nsgai_adig [-4|-6] [-c] [-n NS_NAME | -f NS_FD] [-r]"
-                 " HOST [HOST...]\n");
+    fprintf(out, "Usage: nsgai_adig [-4|-6] [-c] [-n NS_NAME | -f NS_FD] "
+                 "[-p POLICY] [-r] HOST [HOST...]\n");
+}
+
+static int
+parse_policy(const char *arg, nsgai_lookup_policy_t *policy)
+{
+    if (strcmp(arg, "hosts-first") == 0) {
+        *policy = NSGAI_LOOKUP_HOSTS_FIRST;
+        return 0;
+    }
+    if (strcmp(arg, "dns-first") == 0) {
+        *policy = NSGAI_LOOKUP_DNS_FIRST;
+        return 0;
+    }
+    if (strcmp(arg, "hosts-only") == 0) {
+        *policy = NSGAI_LOOKUP_HOSTS_ONLY;
+        return 0;
+    }
+    if (strcmp(arg, "dns-only") == 0) {
+        *policy = NSGAI_LOOKUP_DNS_ONLY;
+        return 0;
+    }
+    return -1;
 }
 
 int
 main(int argc, char **argv)
 {
-    int family          = AF_UNSPEC;
-    int want_canon      = 0;
-    int reverse         = 0;
-    const char *ns_name = NULL;
-    int ns_fd           = -1;
+    int family                   = AF_UNSPEC;
+    int want_canon               = 0;
+    int reverse                  = 0;
+    const char *ns_name          = NULL;
+    int ns_fd                    = -1;
+    int have_policy              = 0;
+    nsgai_lookup_policy_t policy = NSGAI_LOOKUP_HOSTS_FIRST;
 
     int opt;
-    while ((opt = getopt(argc, argv, "46cn:f:rh")) != -1) {
+    while ((opt = getopt(argc, argv, "46cn:f:p:rh")) != -1) {
         switch (opt) {
             case '4': family = AF_INET; break;
             case '6': family = AF_INET6; break;
@@ -136,6 +163,13 @@ main(int argc, char **argv)
                     return 2;
                 }
                 break;
+            case 'p':
+                if (parse_policy(optarg, &policy) != 0) {
+                    fprintf(stderr, "nsgai_adig: bad policy: %s\n", optarg);
+                    return 2;
+                }
+                have_policy = 1;
+                break;
             case 'r': reverse = 1; break;
             case 'h': usage(stdout); return 0;
             default: usage(stderr); return 2;
@@ -147,6 +181,10 @@ main(int argc, char **argv)
     }
     if (ns_name && ns_fd >= 0) {
         fprintf(stderr, "nsgai_adig: -n and -f are mutually exclusive\n");
+        return 2;
+    }
+    if (have_policy && nsgai_set_lookup_policy(policy) != 0) {
+        fprintf(stderr, "nsgai_adig: failed to set lookup policy\n");
         return 2;
     }
 

@@ -30,6 +30,7 @@ NSGAI_0 {
         nsgai_getnameinfo;
         nsgai_getnameinfo_ns;
         nsgai_getnameinfo_nsfd;
+        nsgai_set_lookup_policy;
         nsgai_freeaddrinfo;
         nsgai_gai_strerror;
         nsgai_suspend;

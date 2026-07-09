@@ -601,20 +601,26 @@ nsgai_channel_create(const nsgai_ns_t *ns, nsgai_channel_t **out)
         &g_cache_lock, "pthread_mutex_lock(g_cache_lock)");
 
     nsgai_channel_t *hit = NULL;
-    for (nsgai_channel_t *e = g_cache_head; e; e = e->next) {
+    for (nsgai_channel_t *e = g_cache_head; e != NULL;) {
+        nsgai_channel_t *next = e->next;
         if (e->stale) {
+            e = next;
             continue;
         }
         if (e->key_dev != dev || e->key_ino != ino) {
+            e = next;
             continue;
         }
         if (e->key_has_fd != has_fd) {
+            e = next;
             continue;
         }
         if (!strs_equal(e->resolvconf_path, want_resolv)) {
+            e = next;
             continue;
         }
         if (!strs_equal(e->hosts_path, want_hosts)) {
+            e = next;
             continue;
         }
         if (!entry_is_fresh(e)) {
@@ -626,6 +632,7 @@ nsgai_channel_create(const nsgai_ns_t *ns, nsgai_channel_t **out)
                 g_cache_idle--;
                 victim = e; /* destroy after unlock */
             }
+            e = next;
             continue;
         }
         hit = e;

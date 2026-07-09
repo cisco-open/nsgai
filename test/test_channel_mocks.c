@@ -39,6 +39,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 /* ------------------------------------------------------------------ *
@@ -69,6 +70,9 @@ static struct {
     int armed_fcntl_cmd;
     int fcntl_errno;
 
+    int calloc_call_count;
+    int calloc_fail_nth;
+
     /* ares_init_options(): if armed_ares_init != 0, the next call
      * returns ares_init_status (one shot). */
     int armed_ares_init;
@@ -84,7 +88,39 @@ static struct {
     struct ares_addrinfo_hints last_aih;
     char last_name[128];
     char last_service[32];
+
+    int armed_ares_set_socket_functions_ex;
+    int ares_set_socket_functions_ex_status;
+
+    int armed_pthread_mutex_lock;
+    int pthread_mutex_lock_rc;
+
+    int armed_pthread_mutex_unlock;
+    int pthread_mutex_unlock_rc;
+
+    int armed_pthread_cond_wait;
+    int pthread_cond_wait_rc;
+
+    int armed_pthread_cond_signal;
+    int pthread_cond_signal_rc;
+
+    int armed_pthread_mutex_init;
+    int pthread_mutex_init_rc;
+
+    int armed_pthread_cond_init;
+    int pthread_cond_init_rc;
+
+    int armed_pthread_mutex_destroy;
+    int pthread_mutex_destroy_rc;
+
+    int armed_pthread_cond_destroy;
+    int pthread_cond_destroy_rc;
+
+    int abort_exit_code;
 } g_mock;
+
+static jmp_buf g_abort_jmp;
+static int g_abort_expect = 0;
 
 static void
 mock_reset(void)
@@ -163,6 +199,19 @@ __wrap_fcntl(int fd, int cmd, ...)
     return __real_fcntl(fd, cmd, arg);
 }
 
+extern void *
+__real_calloc(size_t, size_t);
+void *
+__wrap_calloc(size_t nmemb, size_t size)
+{
+    g_mock.calloc_call_count++;
+    if (g_mock.calloc_fail_nth > 0 &&
+        g_mock.calloc_call_count == g_mock.calloc_fail_nth) {
+        return NULL;
+    }
+    return __real_calloc(nmemb, size);
+}
+
 extern ares_status_t
 __real_ares_init_options(
     ares_channel_t **channelptr, const struct ares_options *opts, int optmask);
@@ -220,6 +269,134 @@ __wrap_ares_getaddrinfo(ares_channel_t *channel,
     }
 
     __real_ares_getaddrinfo(channel, name, service, hints, callback, arg);
+}
+
+extern ares_status_t
+__real_ares_set_socket_functions_ex(ares_channel_t *channel,
+    const struct ares_socket_functions_ex *socket_functions,
+    void *user_data);
+ares_status_t
+__wrap_ares_set_socket_functions_ex(ares_channel_t *channel,
+    const struct ares_socket_functions_ex *socket_functions,
+    void *user_data)
+{
+    if (g_mock.armed_ares_set_socket_functions_ex) {
+        g_mock.armed_ares_set_socket_functions_ex = 0;
+        return (ares_status_t)g_mock.ares_set_socket_functions_ex_status;
+    }
+    return __real_ares_set_socket_functions_ex(
+        channel, socket_functions, user_data);
+}
+
+extern int
+__real_pthread_mutex_lock(pthread_mutex_t *);
+int
+__wrap_pthread_mutex_lock(pthread_mutex_t *mu)
+{
+    if (g_mock.armed_pthread_mutex_lock) {
+        g_mock.armed_pthread_mutex_lock = 0;
+        return g_mock.pthread_mutex_lock_rc;
+    }
+    return __real_pthread_mutex_lock(mu);
+}
+
+extern int
+__real_pthread_mutex_unlock(pthread_mutex_t *);
+int
+__wrap_pthread_mutex_unlock(pthread_mutex_t *mu)
+{
+    if (g_mock.armed_pthread_mutex_unlock) {
+        g_mock.armed_pthread_mutex_unlock = 0;
+        return g_mock.pthread_mutex_unlock_rc;
+    }
+    return __real_pthread_mutex_unlock(mu);
+}
+
+extern int
+__real_pthread_cond_wait(pthread_cond_t *, pthread_mutex_t *);
+int
+__wrap_pthread_cond_wait(pthread_cond_t *cv, pthread_mutex_t *mu)
+{
+    if (g_mock.armed_pthread_cond_wait) {
+        g_mock.armed_pthread_cond_wait = 0;
+        return g_mock.pthread_cond_wait_rc;
+    }
+    return __real_pthread_cond_wait(cv, mu);
+}
+
+extern int
+__real_pthread_cond_signal(pthread_cond_t *);
+int
+__wrap_pthread_cond_signal(pthread_cond_t *cv)
+{
+    if (g_mock.armed_pthread_cond_signal) {
+        g_mock.armed_pthread_cond_signal = 0;
+        return g_mock.pthread_cond_signal_rc;
+    }
+    return __real_pthread_cond_signal(cv);
+}
+
+extern int
+__real_pthread_mutex_init(pthread_mutex_t *, const pthread_mutexattr_t *);
+int
+__wrap_pthread_mutex_init(pthread_mutex_t *mu, const pthread_mutexattr_t *attr)
+{
+    if (g_mock.armed_pthread_mutex_init) {
+        g_mock.armed_pthread_mutex_init = 0;
+        return g_mock.pthread_mutex_init_rc;
+    }
+    return __real_pthread_mutex_init(mu, attr);
+}
+
+extern int
+__real_pthread_cond_init(pthread_cond_t *, const pthread_condattr_t *);
+int
+__wrap_pthread_cond_init(pthread_cond_t *cv, const pthread_condattr_t *attr)
+{
+    if (g_mock.armed_pthread_cond_init) {
+        g_mock.armed_pthread_cond_init = 0;
+        return g_mock.pthread_cond_init_rc;
+    }
+    return __real_pthread_cond_init(cv, attr);
+}
+
+extern int
+__real_pthread_mutex_destroy(pthread_mutex_t *);
+int
+__wrap_pthread_mutex_destroy(pthread_mutex_t *mu)
+{
+    if (g_mock.armed_pthread_mutex_destroy) {
+        g_mock.armed_pthread_mutex_destroy = 0;
+        return g_mock.pthread_mutex_destroy_rc;
+    }
+    return __real_pthread_mutex_destroy(mu);
+}
+
+extern int
+__real_pthread_cond_destroy(pthread_cond_t *);
+int
+__wrap_pthread_cond_destroy(pthread_cond_t *cv)
+{
+    if (g_mock.armed_pthread_cond_destroy) {
+        g_mock.armed_pthread_cond_destroy = 0;
+        return g_mock.pthread_cond_destroy_rc;
+    }
+    return __real_pthread_cond_destroy(cv);
+}
+
+extern void
+__real_abort(void);
+void
+__wrap_abort(void)
+{
+    if (g_abort_expect) {
+        g_abort_expect = 0;
+        longjmp(g_abort_jmp, 1);
+    }
+    if (g_mock.abort_exit_code > 0) {
+        _exit(g_mock.abort_exit_code);
+    }
+    __real_abort();
 }
 
 /* ------------------------------------------------------------------ *
@@ -472,6 +649,207 @@ t_nsgai_channel_destroy_null(void **state)
     nsgai_channel_destroy(NULL);
 }
 
+static void
+t_cache_idle_helpers(void **state)
+{
+    (void)state;
+
+    nsgai_channel_t e1, e2, e3;
+    memset(&e1, 0, sizeof(e1));
+    memset(&e2, 0, sizeof(e2));
+    memset(&e3, 0, sizeof(e3));
+
+    e1.refcount = 0;
+    e1.lru_seq  = 20;
+    e1.next     = &e2;
+
+    e2.refcount = 1; /* busy entry must be ignored */
+    e2.lru_seq  = 10;
+    e2.next     = &e3;
+
+    e3.refcount = 0;
+    e3.lru_seq  = 5;
+    e3.next     = NULL;
+
+    g_cache_head = &e1;
+    g_cache_idle = 2;
+
+    nsgai_channel_t *victim = cache_find_lru_idle();
+    assert_ptr_equal(victim, &e3);
+
+    g_cache_idle = NSGAI_CACHE_MAX_IDLE;
+    assert_null(cache_maybe_evict_locked());
+
+    g_cache_idle = NSGAI_CACHE_MAX_IDLE + 1;
+    victim       = cache_maybe_evict_locked();
+    assert_ptr_equal(victim, &e3);
+    assert_int_equal(g_cache_idle, NSGAI_CACHE_MAX_IDLE);
+    assert_ptr_equal(g_cache_head, &e1);
+    assert_ptr_equal(e1.next, &e2);
+
+    cache_unlink(&e1);
+    assert_ptr_equal(g_cache_head, &e2);
+
+    /* Cleanup globals so later tests start from known empty state. */
+    g_cache_head = NULL;
+    g_cache_idle = 0;
+}
+
+static void
+t_entry_is_fresh_variants(void **state)
+{
+    (void)state;
+
+    char templ[] = "/tmp/nsgai-fresh-XXXXXX";
+    int fd       = mkstemp(templ);
+    assert_int_not_equal(fd, -1);
+    close(fd);
+
+    nsgai_channel_t e;
+    memset(&e, 0, sizeof(e));
+    e.resolvconf_path = templ;
+    e.resolv_valid    = true;
+    assert_int_equal(stat(templ, &e.resolv_st), 0);
+    assert_true(entry_is_fresh(&e));
+
+    /* Change tracked metadata to force stat_changed() path. */
+    struct timespec ts[2];
+    ts[0].tv_sec  = e.resolv_st.st_atim.tv_sec;
+    ts[0].tv_nsec = e.resolv_st.st_atim.tv_nsec;
+    ts[1].tv_sec  = e.resolv_st.st_mtim.tv_sec + 1;
+    ts[1].tv_nsec = e.resolv_st.st_mtim.tv_nsec;
+    assert_int_equal(utimensat(AT_FDCWD, templ, ts, 0), 0);
+    assert_false(entry_is_fresh(&e));
+
+    unlink(templ);
+
+    memset(&e, 0, sizeof(e));
+    e.hosts_valid = true;
+    e.hosts_path  = "/definitely/no/such/file";
+    assert_false(entry_is_fresh(&e));
+}
+
+static void
+t_channel_create_uncached_paths(void **state)
+{
+    (void)state;
+
+    nsgai_ns_t ns;
+    assert_int_equal(nsgai_ns_resolve_implicit(&ns), 0);
+
+    nsgai_channel_t *ch = NULL;
+    assert_int_equal(nsgai_channel_create_uncached(&ns, &ch), ARES_SUCCESS);
+    assert_non_null(ch);
+    nsgai_channel_destroy(ch);
+    nsgai_ns_release(&ns);
+
+    nsgai_ns_t bad;
+    memset(&bad, 0, sizeof(bad));
+    bad.netns_fd = 987654; /* invalid fd for compute_ns_key() */
+    ch           = NULL;
+    assert_int_equal(nsgai_channel_create_uncached(&bad, &ch), ARES_EFILE);
+    assert_null(ch);
+}
+
+static void
+t_addrinfo_hosts_and_service_helpers(void **state)
+{
+    (void)state;
+
+    char hosts_templ[] = "/tmp/nsgai-hosts-XXXXXX";
+    int fd             = mkstemp(hosts_templ);
+    assert_int_not_equal(fd, -1);
+
+    const char *contents = "127.0.0.9 host.example.com host\n"
+                           "::1 ip6.example.com ip6\n";
+    ssize_t nw           = write(fd, contents, strlen(contents));
+    assert_int_equal((size_t)nw, strlen(contents));
+    close(fd);
+
+    nsgai_ns_t ns;
+    memset(&ns, 0, sizeof(ns));
+    ns.netns_fd   = -1;
+    ns.hosts_path = hosts_templ;
+
+    struct sockaddr_in sa4;
+    memset(&sa4, 0, sizeof(sa4));
+    sa4.sin_family = AF_INET;
+    assert_int_equal(inet_pton(AF_INET, "127.0.0.9", &sa4.sin_addr), 1);
+
+    char host[128];
+    assert_int_equal(nsgai_lookup_hosts_reverse(&ns, (struct sockaddr *)&sa4,
+                         sizeof(sa4), host, sizeof(host), 0),
+        0);
+    assert_string_equal(host, "host.example.com");
+
+    assert_int_equal(nsgai_lookup_hosts_reverse(&ns, (struct sockaddr *)&sa4,
+                         sizeof(sa4), host, sizeof(host), NI_NOFQDN),
+        0);
+    assert_string_equal(host, "host");
+
+    char tiny[2];
+    assert_int_equal(nsgai_lookup_hosts_reverse(&ns, (struct sockaddr *)&sa4,
+                         sizeof(sa4), tiny, sizeof(tiny), 0),
+        EAI_OVERFLOW);
+
+    struct sockaddr_in miss;
+    memset(&miss, 0, sizeof(miss));
+    miss.sin_family = AF_INET;
+    assert_int_equal(inet_pton(AF_INET, "127.0.0.10", &miss.sin_addr), 1);
+    assert_int_equal(nsgai_lookup_hosts_reverse(&ns, (struct sockaddr *)&miss,
+                         sizeof(miss), host, sizeof(host), 0),
+        EAI_NONAME);
+
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_flags  = AI_CANONNAME;
+
+    struct addrinfo *res = NULL;
+    assert_int_equal(
+        nsgai_lookup_hosts_forward(&ns, "host", "80", &hints, &res), 0);
+    assert_non_null(res);
+    assert_non_null(res->ai_canonname);
+    nsgai_freeaddrinfo(res);
+
+    res = NULL;
+    assert_int_equal(
+        nsgai_lookup_hosts_forward(&ns, "no-such-host", "80", &hints, &res),
+        EAI_NONAME);
+    assert_null(res);
+
+    char serv[NI_MAXSERV];
+    memset(serv, 0, sizeof(serv));
+    sa4.sin_port = htons(53);
+    assert_int_equal(
+        nsgai_format_service((struct sockaddr *)&sa4, serv, sizeof(serv), 0),
+        0);
+    assert_true(serv[0] != '\0');
+
+    assert_int_equal(nsgai_format_service((struct sockaddr *)&sa4, serv,
+                         sizeof(serv), NI_NUMERICSERV),
+        0);
+    assert_string_equal(serv, "53");
+
+    char serv_tiny[2];
+    assert_int_equal(nsgai_format_service((struct sockaddr *)&sa4, serv_tiny,
+                         sizeof(serv_tiny), NI_NUMERICSERV),
+        EAI_OVERFLOW);
+
+    struct sockaddr_storage bad;
+    memset(&bad, 0, sizeof(bad));
+    bad.ss_family = AF_UNSPEC;
+    assert_int_equal(
+        nsgai_format_service((struct sockaddr *)&bad, serv, sizeof(serv), 0),
+        EAI_FAMILY);
+
+    assert_int_equal(
+        nsgai_format_service((struct sockaddr *)&sa4, NULL, 0, NI_NUMERICSERV),
+        0);
+
+    unlink(hosts_templ);
+}
+
 /* ------------------------------------------------------------------ *
  * Tests: nsgai_status_to_eai - every switch arm                       *
  * ------------------------------------------------------------------ */
@@ -720,6 +1098,7 @@ static void
 t_do_getaddrinfo_channel_fail(void **state)
 {
     (void)state;
+    assert_int_equal(nsgai_set_lookup_policy(NSGAI_LOOKUP_DNS_ONLY), 0);
     /* Force channel creation to fail -> nsgai_getaddrinfo returns
      * EAI_MEMORY (covers the failure branch in do_getaddrinfo). */
     g_mock.armed_ares_init  = 1;
@@ -735,12 +1114,14 @@ t_do_getaddrinfo_channel_fail(void **state)
     rc                      = nsgai_getaddrinfo("localhost", NULL, NULL, &res);
     assert_int_equal(rc, EAI_SYSTEM);
     assert_null(res);
+    assert_int_equal(nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_FIRST), 0);
 }
 
 static void
 t_do_getnameinfo_channel_fail(void **state)
 {
     (void)state;
+    assert_int_equal(nsgai_set_lookup_policy(NSGAI_LOOKUP_DNS_ONLY), 0);
     g_mock.armed_ares_init  = 1;
     g_mock.ares_init_status = ARES_ENOMEM;
     struct sockaddr_in sa   = {0};
@@ -748,8 +1129,9 @@ t_do_getnameinfo_channel_fail(void **state)
     sa.sin_addr.s_addr      = htonl(0x7f000001);
     char host[64];
     int rc = nsgai_getnameinfo((struct sockaddr *)&sa, sizeof(sa), host,
-        sizeof(host), NULL, 0, NI_NUMERICHOST);
+        sizeof(host), NULL, 0, NI_NAMEREQD);
     assert_int_equal(rc, EAI_MEMORY);
+    assert_int_equal(nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_FIRST), 0);
 }
 
 static void
@@ -854,6 +1236,367 @@ t_gai_strerror_arms(void **state)
     }
 }
 
+static void
+t_addrinfo_helper_edges(void **state)
+{
+    (void)state;
+
+    char comment_line[] = "127.0.0.1 host # trailing comment";
+    nsgai_hosts_strip_comment(comment_line);
+    assert_string_equal(comment_line, "127.0.0.1 host ");
+
+    char tokens[] = "   alpha beta";
+    char *cursor  = tokens;
+    char *tok     = NULL;
+    assert_int_equal(nsgai_getline_token(&cursor, &tok), 1);
+    assert_string_equal(tok, "alpha");
+    assert_int_equal(nsgai_getline_token(&cursor, &tok), 1);
+    assert_string_equal(tok, "beta");
+    assert_int_equal(nsgai_getline_token(&cursor, &tok), 0);
+    assert_null(tok);
+
+    struct addrinfo *res = NULL;
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+
+    assert_int_equal(
+        nsgai_synthesize_null_node_addrinfo(NULL, NULL, &res), EAI_NONAME);
+
+    hints.ai_family = AF_UNIX;
+    assert_int_equal(
+        nsgai_synthesize_null_node_addrinfo("53", &hints, &res), EAI_FAMILY);
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_flags  = AI_PASSIVE;
+    assert_int_equal(
+        nsgai_synthesize_null_node_addrinfo("53", &hints, &res), 0);
+    assert_non_null(res);
+    assert_non_null(res->ai_next);
+    nsgai_freeaddrinfo(res);
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET6;
+    res             = NULL;
+    assert_int_equal(
+        nsgai_numeric_node_to_addrinfo("::1", "0", &hints, &res), 0);
+    assert_non_null(res);
+    assert_int_equal(res->ai_family, AF_INET6);
+    nsgai_freeaddrinfo(res);
+
+    hints.ai_family = AF_INET;
+    res             = NULL;
+    assert_int_equal(
+        nsgai_numeric_node_to_addrinfo("::1", "0", &hints, &res), EAI_NONAME);
+    assert_null(res);
+
+    struct sockaddr_in6 sa6;
+    memset(&sa6, 0, sizeof(sa6));
+    sa6.sin6_family = AF_INET6;
+    assert_int_equal(inet_pton(AF_INET6, "::1", &sa6.sin6_addr), 1);
+    char host[NI_MAXHOST];
+    assert_int_equal(
+        nsgai_format_numeric_host((struct sockaddr *)&sa6, host, sizeof(host)),
+        0);
+    assert_true(strchr(host, ':') != NULL);
+
+    struct sockaddr_storage bad;
+    memset(&bad, 0, sizeof(bad));
+    bad.ss_family = AF_UNSPEC;
+    assert_int_equal(
+        nsgai_format_numeric_host((struct sockaddr *)&bad, host, sizeof(host)),
+        EAI_FAMILY);
+
+    nsgai_ns_t ns;
+    memset(&ns, 0, sizeof(ns));
+    ns.netns_fd   = -1;
+    ns.hosts_path = "/definitely/no/such/hosts";
+    assert_int_equal(
+        nsgai_lookup_hosts_forward(&ns, "x", "80", NULL, &res), EAI_NONAME);
+
+    char hosts_templ[] = "/tmp/nsgai-helpers-XXXXXX";
+    int fd             = mkstemp(hosts_templ);
+    assert_int_not_equal(fd, -1);
+    const char *contents = "# comment-only line\n"
+                           "::1 v6host.example v6host # inline comment\n"
+                           "127.0.0.9 v4host.example v4host\n";
+    assert_int_equal(
+        (size_t)write(fd, contents, strlen(contents)), strlen(contents));
+    close(fd);
+
+    ns.hosts_path = hosts_templ;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET6;
+    assert_int_equal(
+        nsgai_lookup_hosts_forward(&ns, "v6host", "80", &hints, &res), 0);
+    assert_non_null(res);
+    assert_int_equal(res->ai_family, AF_INET6);
+    nsgai_freeaddrinfo(res);
+
+    assert_int_equal(
+        nsgai_lookup_hosts_forward(&ns, "v6host", "999999", &hints, &res),
+        EAI_SERVICE);
+
+    memset(&sa6, 0, sizeof(sa6));
+    sa6.sin6_family = AF_INET6;
+    assert_int_equal(inet_pton(AF_INET6, "::1", &sa6.sin6_addr), 1);
+    assert_int_equal(nsgai_lookup_hosts_reverse(&ns, (struct sockaddr *)&sa6,
+                         sizeof(sa6), host, sizeof(host), NI_NOFQDN),
+        0);
+    assert_string_equal(host, "v6host");
+
+    g_mock.calloc_fail_nth   = 1;
+    g_mock.calloc_call_count = 0;
+    assert_null(new_ai_node(AF_INET, SOCK_STREAM, IPPROTO_TCP,
+        &((struct in_addr){.s_addr = htonl(INADDR_LOOPBACK)}),
+        sizeof(struct in_addr), 0, NULL));
+
+    g_mock.calloc_fail_nth   = 2;
+    g_mock.calloc_call_count = 0;
+    assert_null(new_ai_node(AF_INET, SOCK_STREAM, IPPROTO_TCP,
+        &((struct in_addr){.s_addr = htonl(INADDR_LOOPBACK)}),
+        sizeof(struct in_addr), 0, NULL));
+    g_mock.calloc_fail_nth = 0;
+
+    unlink(hosts_templ);
+}
+
+static void
+t_addrinfo_policy_edges(void **state)
+{
+    (void)state;
+
+    char hosts_templ[] = "/tmp/nsgai-policy-XXXXXX";
+    int fd             = mkstemp(hosts_templ);
+    assert_int_not_equal(fd, -1);
+    const char *contents = "127.0.0.9 known.example known\n";
+    assert_int_equal(
+        (size_t)write(fd, contents, strlen(contents)), strlen(contents));
+    close(fd);
+
+    nsgai_ns_t ns;
+    memset(&ns, 0, sizeof(ns));
+    ns.netns_fd   = -1;
+    ns.hosts_path = hosts_templ;
+
+    struct addrinfo *res = NULL;
+    assert_int_equal(
+        do_getaddrinfo(&ns, "known", "80", NULL, NSGAI_LOOKUP_HOSTS_ONLY, &res),
+        0);
+    assert_non_null(res);
+    nsgai_freeaddrinfo(res);
+
+    res = NULL;
+    assert_int_equal(do_getaddrinfo(&ns, "missing-host", "80", NULL,
+                         NSGAI_LOOKUP_HOSTS_ONLY, &res),
+        EAI_NONAME);
+    assert_null(res);
+
+    struct sockaddr_in miss;
+    memset(&miss, 0, sizeof(miss));
+    miss.sin_family = AF_INET;
+    miss.sin_port   = htons(514);
+    assert_int_equal(inet_pton(AF_INET, "127.0.0.10", &miss.sin_addr), 1);
+
+    char host[NI_MAXHOST];
+    char serv[NI_MAXSERV];
+    assert_int_equal(do_getnameinfo(&ns, (struct sockaddr *)&miss, sizeof(miss),
+                         host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST,
+                         NSGAI_LOOKUP_HOSTS_ONLY),
+        0);
+    assert_string_equal(host, "127.0.0.10");
+
+    assert_int_equal(
+        do_getnameinfo(&ns, (struct sockaddr *)&miss, sizeof(miss), host,
+            sizeof(host), NULL, 0, 0, NSGAI_LOOKUP_HOSTS_ONLY),
+        EAI_NONAME);
+
+    assert_int_equal(
+        do_getnameinfo(&ns, (struct sockaddr *)&miss, sizeof(miss), host,
+            sizeof(host), NULL, 0, NI_NAMEREQD, NSGAI_LOOKUP_HOSTS_ONLY),
+        EAI_NONAME);
+
+    unlink(hosts_templ);
+}
+
+static void
+t_channel_build_paths_and_socket_fn_failure(void **state)
+{
+    (void)state;
+
+    char resolv_templ[] = "/tmp/nsgai-resolv-XXXXXX";
+    int rfd             = mkstemp(resolv_templ);
+    assert_int_not_equal(rfd, -1);
+    const char *resolv_contents = "nameserver 127.0.0.1\n";
+    assert_int_equal(
+        (size_t)write(rfd, resolv_contents, strlen(resolv_contents)),
+        strlen(resolv_contents));
+    close(rfd);
+
+    char hosts_templ[] = "/tmp/nsgai-hosts2-XXXXXX";
+    int hfd            = mkstemp(hosts_templ);
+    assert_int_not_equal(hfd, -1);
+    const char *hosts_contents = "127.0.0.1 localhost\n";
+    assert_int_equal((size_t)write(hfd, hosts_contents, strlen(hosts_contents)),
+        strlen(hosts_contents));
+    close(hfd);
+
+    nsgai_ns_t ns;
+    memset(&ns, 0, sizeof(ns));
+    ns.netns_fd        = -1;
+    ns.resolvconf_path = resolv_templ;
+    ns.hosts_path      = hosts_templ;
+
+    nsgai_channel_t *ch = NULL;
+    assert_int_equal(nsgai_channel_create_uncached(&ns, &ch), ARES_SUCCESS);
+    assert_non_null(ch);
+    assert_true(ch->resolv_valid);
+    assert_true(ch->hosts_valid);
+    nsgai_channel_destroy(ch);
+
+    g_mock.armed_ares_set_socket_functions_ex  = 1;
+    g_mock.ares_set_socket_functions_ex_status = ARES_EFORMERR;
+    ch                                         = NULL;
+    assert_int_equal(nsgai_channel_create_uncached(&ns, &ch), ARES_EFORMERR);
+    assert_null(ch);
+
+    unlink(resolv_templ);
+    unlink(hosts_templ);
+}
+
+static void
+t_channel_cache_mismatch_and_stale_paths(void **state)
+{
+    (void)state;
+
+    nsgai_ns_t implicit;
+    assert_int_equal(nsgai_ns_resolve_implicit(&implicit), 0);
+
+    nsgai_channel_t *ch = NULL;
+    assert_int_equal(nsgai_channel_create(&implicit, &ch), ARES_SUCCESS);
+    assert_non_null(ch);
+    nsgai_channel_destroy(ch);
+
+    /* Stale entry path in scan loop. */
+    if (g_cache_head != NULL) {
+        g_cache_head->stale = true;
+    }
+    assert_int_equal(nsgai_channel_create(&implicit, &ch), ARES_SUCCESS);
+    assert_non_null(ch);
+    nsgai_channel_destroy(ch);
+
+    int netfd = open_self_netns();
+    assert_int_not_equal(netfd, -1);
+    nsgai_ns_t explicit_fd;
+    assert_int_equal(nsgai_ns_resolve_explicit_fd(netfd, &explicit_fd), 0);
+    assert_int_equal(nsgai_channel_create(&explicit_fd, &ch), ARES_SUCCESS);
+    assert_non_null(ch);
+    nsgai_channel_destroy(ch);
+    nsgai_ns_release(&explicit_fd);
+    close(netfd);
+
+    char hosts_templ[] = "/tmp/nsgai-hosts-mismatch-XXXXXX";
+    int hfd            = mkstemp(hosts_templ);
+    assert_int_not_equal(hfd, -1);
+    const char *hosts_contents = "127.0.0.1 localhost\n";
+    assert_int_equal((size_t)write(hfd, hosts_contents, strlen(hosts_contents)),
+        strlen(hosts_contents));
+    close(hfd);
+
+    nsgai_ns_t with_hosts = implicit;
+    with_hosts.hosts_path = hosts_templ;
+    assert_int_equal(nsgai_channel_create(&with_hosts, &ch), ARES_SUCCESS);
+    assert_non_null(ch);
+    nsgai_channel_destroy(ch);
+
+    unlink(hosts_templ);
+    nsgai_ns_release(&implicit);
+
+    nsgai_ns_t bad;
+    memset(&bad, 0, sizeof(bad));
+    bad.netns_fd = 987654;
+    assert_int_equal(nsgai_channel_create(&bad, &ch), ARES_EFILE);
+}
+
+static int
+expect_abort_jump(void (*fn)(void))
+{
+    if (setjmp(g_abort_jmp) == 0) {
+        g_abort_expect = 1;
+        fn();
+        g_abort_expect = 0;
+        return -1;
+    }
+    return 0;
+}
+
+static void
+child_fail_lock_abort(void)
+{
+    pthread_mutex_t mu              = PTHREAD_MUTEX_INITIALIZER;
+    g_mock.armed_pthread_mutex_lock = 1;
+    g_mock.pthread_mutex_lock_rc    = EPERM;
+    nsgai_pthread_mutex_lock_or_abort(&mu, "lock");
+}
+
+static void
+child_fail_unlock_abort(void)
+{
+    pthread_mutex_t mu                = PTHREAD_MUTEX_INITIALIZER;
+    g_mock.armed_pthread_mutex_unlock = 1;
+    g_mock.pthread_mutex_unlock_rc    = EPERM;
+    nsgai_pthread_mutex_unlock_or_abort(&mu, "unlock");
+}
+
+static void
+child_fail_wait_abort(void)
+{
+    pthread_mutex_t mu             = PTHREAD_MUTEX_INITIALIZER;
+    pthread_cond_t cv              = PTHREAD_COND_INITIALIZER;
+    g_mock.armed_pthread_cond_wait = 1;
+    g_mock.pthread_cond_wait_rc    = EPERM;
+    nsgai_pthread_cond_wait_or_abort(&cv, &mu, "wait");
+}
+
+static void
+child_fail_signal_abort(void)
+{
+    pthread_cond_t cv                = PTHREAD_COND_INITIALIZER;
+    g_mock.armed_pthread_cond_signal = 1;
+    g_mock.pthread_cond_signal_rc    = EPERM;
+    nsgai_pthread_cond_signal_or_abort(&cv, "signal");
+}
+
+static void
+t_diag_abort_and_log_paths(void **state)
+{
+    (void)state;
+
+    assert_int_equal(expect_abort_jump(child_fail_lock_abort), 0);
+    assert_int_equal(expect_abort_jump(child_fail_unlock_abort), 0);
+    assert_int_equal(expect_abort_jump(child_fail_wait_abort), 0);
+    assert_int_equal(expect_abort_jump(child_fail_signal_abort), 0);
+
+    pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
+    pthread_cond_t cv  = PTHREAD_COND_INITIALIZER;
+
+    g_mock.armed_pthread_mutex_init = 1;
+    g_mock.pthread_mutex_init_rc    = EAGAIN;
+    assert_int_equal(nsgai_pthread_mutex_init_checked(&mu, "mi"), EAGAIN);
+
+    g_mock.armed_pthread_cond_init = 1;
+    g_mock.pthread_cond_init_rc    = EAGAIN;
+    assert_int_equal(nsgai_pthread_cond_init_checked(&cv, "ci"), EAGAIN);
+
+    g_mock.armed_pthread_mutex_destroy = 1;
+    g_mock.pthread_mutex_destroy_rc    = EBUSY;
+    nsgai_pthread_mutex_destroy_checked(&mu, "md");
+
+    g_mock.armed_pthread_cond_destroy = 1;
+    g_mock.pthread_cond_destroy_rc    = EBUSY;
+    nsgai_pthread_cond_destroy_checked(&cv, "cd");
+}
+
 /* ------------------------------------------------------------------ *
  * Fixture: reset mock state between tests.                            *
  * ------------------------------------------------------------------ */
@@ -886,6 +1629,10 @@ main(void)
         cmocka_unit_test_setup(t_strs_equal_helpers, setup),
         cmocka_unit_test_setup(t_nsgai_channel_ares_null, setup),
         cmocka_unit_test_setup(t_nsgai_channel_destroy_null, setup),
+        cmocka_unit_test_setup(t_cache_idle_helpers, setup),
+        cmocka_unit_test_setup(t_entry_is_fresh_variants, setup),
+        cmocka_unit_test_setup(t_channel_create_uncached_paths, setup),
+        cmocka_unit_test_setup(t_addrinfo_hosts_and_service_helpers, setup),
         cmocka_unit_test_setup(t_status_to_eai_arms, setup),
         cmocka_unit_test_setup(t_map_ai_flags_arms, setup),
         cmocka_unit_test_setup(t_map_ni_flags_arms, setup),
@@ -902,6 +1649,12 @@ main(void)
         cmocka_unit_test_setup(t_do_getaddrinfo_rsyslog_udp_hints, setup),
         cmocka_unit_test_setup(t_public_input_validation, setup),
         cmocka_unit_test_setup(t_gai_strerror_arms, setup),
+        cmocka_unit_test_setup(t_addrinfo_helper_edges, setup),
+        cmocka_unit_test_setup(t_addrinfo_policy_edges, setup),
+        cmocka_unit_test_setup(
+            t_channel_build_paths_and_socket_fn_failure, setup),
+        cmocka_unit_test_setup(t_channel_cache_mismatch_and_stale_paths, setup),
+        cmocka_unit_test_setup(t_diag_abort_and_log_paths, setup),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

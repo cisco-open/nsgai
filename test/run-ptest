@@ -72,8 +72,12 @@ if command -v coredns >/dev/null 2>&1 || [[ -x "$PWD/coredns" ]]; then
     run_test nsgai_dns_netns_integration \
         env NSGAI_BUILD_DIR="$PWD" ./integration_dns_netns.sh \
         "$PWD/nsgai_adig" "$PWD/test_multins" "$PWD/test_cache_stale"
+    run_test nsgai_policy_netns_integration \
+        env NSGAI_BUILD_DIR="$PWD" ./integration_policy_netns.sh \
+        "$PWD/nsgai_adig"
 else
     echo "SKIP: nsgai_dns_netns_integration (coredns not installed)"
+    echo "SKIP: nsgai_policy_netns_integration (coredns not installed)"
 fi
 
 exit ${rc}

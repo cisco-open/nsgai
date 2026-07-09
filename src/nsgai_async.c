@@ -591,9 +591,18 @@ nsgai_suspend(
     const struct gaicb *const list[], int ent, const struct timespec *timeout)
 {
     int actual = 0;
+    struct timespec abs_timeout;
+    const struct timespec *abs_timeout_p = NULL;
 
     if (ent < 0) {
         return EAI_SYSTEM;
+    }
+
+    if (timeout != NULL) {
+        if (nsgai_timespec_abs_from_rel(timeout, &abs_timeout) != 0) {
+            return EAI_SYSTEM;
+        }
+        abs_timeout_p = &abs_timeout;
     }
 
     nsgai_pthread_mutex_lock_or_abort(&g_async_mu, "pthread_mutex_lock(async)");
@@ -624,15 +633,8 @@ nsgai_suspend(
             continue;
         }
 
-        struct timespec abs_timeout;
-        if (nsgai_timespec_abs_from_rel(timeout, &abs_timeout) != 0) {
-            nsgai_pthread_mutex_unlock_or_abort(
-                &g_async_mu, "pthread_mutex_unlock(async)");
-            return EAI_SYSTEM;
-        }
-
         int wait_rc =
-            pthread_cond_timedwait(&g_async_cv, &g_async_mu, &abs_timeout);
+            pthread_cond_timedwait(&g_async_cv, &g_async_mu, abs_timeout_p);
         if (wait_rc == ETIMEDOUT) {
             nsgai_pthread_mutex_unlock_or_abort(
                 &g_async_mu, "pthread_mutex_unlock(async)");
@@ -658,7 +660,6 @@ nsgai_error(struct gaicb *req)
 int
 nsgai_cancel(struct gaicb *req)
 {
-    int saw_running  = 0;
     int saw_canceled = 0;
     int saw_any      = 0;
     struct sigevent sig_copy;
@@ -700,8 +701,6 @@ nsgai_cancel(struct gaicb *req)
             state->req->__return = EAI_CANCELED;
             ares_cancel(nsgai_channel_ares(state->channel));
             saw_canceled = 1;
-        } else {
-            saw_running = 1;
         }
     }
     nsgai_async_broadcast_or_abort();
@@ -710,9 +709,6 @@ nsgai_cancel(struct gaicb *req)
 
     if (saw_canceled) {
         return EAI_CANCELED;
-    }
-    if (saw_running) {
-        return EAI_NOTCANCELED;
     }
     if (!saw_any) {
         return EAI_ALLDONE;

@@ -7,11 +7,14 @@
 #include "nsgai.h"
 
 #include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <time.h>
@@ -27,6 +30,73 @@
 
 static volatile int g_thread_notified          = 0;
 static volatile sig_atomic_t g_signal_notified = 0;
+
+static struct {
+    int calloc_call_count;
+    int calloc_fail_nth;
+
+    int armed_pthread_create;
+    int pthread_create_rc;
+
+    int armed_clock_gettime;
+
+    int armed_cond_timedwait;
+    int cond_timedwait_rc;
+} g_wrap;
+
+extern void *
+__real_calloc(size_t, size_t);
+void *
+__wrap_calloc(size_t nmemb, size_t size)
+{
+    g_wrap.calloc_call_count++;
+    if (g_wrap.calloc_fail_nth > 0 &&
+        g_wrap.calloc_call_count == g_wrap.calloc_fail_nth) {
+        return NULL;
+    }
+    return __real_calloc(nmemb, size);
+}
+
+extern int
+__real_pthread_create(
+    pthread_t *, const pthread_attr_t *, void *(*)(void *), void *);
+int
+__wrap_pthread_create(
+    pthread_t *thr, const pthread_attr_t *attr, void *(*fn)(void *), void *arg)
+{
+    if (g_wrap.armed_pthread_create) {
+        g_wrap.armed_pthread_create = 0;
+        return g_wrap.pthread_create_rc;
+    }
+    return __real_pthread_create(thr, attr, fn, arg);
+}
+
+extern int
+__real_clock_gettime(clockid_t, struct timespec *);
+int
+__wrap_clock_gettime(clockid_t clk, struct timespec *tp)
+{
+    if (g_wrap.armed_clock_gettime) {
+        g_wrap.armed_clock_gettime = 0;
+        errno                      = EINVAL;
+        return -1;
+    }
+    return __real_clock_gettime(clk, tp);
+}
+
+extern int
+__real_pthread_cond_timedwait(
+    pthread_cond_t *, pthread_mutex_t *, const struct timespec *);
+int
+__wrap_pthread_cond_timedwait(
+    pthread_cond_t *cv, pthread_mutex_t *mu, const struct timespec *abs)
+{
+    if (g_wrap.armed_cond_timedwait) {
+        g_wrap.armed_cond_timedwait = 0;
+        return g_wrap.cond_timedwait_rc;
+    }
+    return __real_pthread_cond_timedwait(cv, mu, abs);
+}
 
 static void
 notify_done(union sigval value)
@@ -200,6 +270,183 @@ test_bad_mode(void)
 }
 
 static int
+test_nowait_allocation_and_worker_failures(void)
+{
+    struct gaicb req;
+    struct gaicb *list[1];
+    struct addrinfo hints;
+
+    memset(&req, 0, sizeof(req));
+    memset(&hints, 0, sizeof(hints));
+    memset(&g_wrap, 0, sizeof(g_wrap));
+    hints.ai_family = AF_INET;
+    hints.ai_flags  = AI_NUMERICHOST;
+    req.ar_name     = "127.0.0.1";
+    req.ar_request  = &hints;
+    list[0]         = &req;
+
+    /* to_submit allocation failure in NOWAIT path. */
+    g_wrap.calloc_fail_nth = 1;
+    MUST(nsgai_getaddrinfo_a(GAI_NOWAIT, list, 1, NULL) == EAI_MEMORY);
+
+    memset(&g_wrap, 0, sizeof(g_wrap));
+    g_wrap.armed_pthread_create = 1;
+    g_wrap.pthread_create_rc    = EAGAIN;
+    MUST(nsgai_getaddrinfo_a(GAI_NOWAIT, list, 1, NULL) == EAI_AGAIN);
+
+    memset(&g_wrap, 0, sizeof(g_wrap));
+    g_wrap.calloc_fail_nth = 2;
+    MUST(nsgai_getaddrinfo_a(GAI_NOWAIT, list, 1, NULL) == EAI_MEMORY);
+
+    return 0;
+}
+
+static int
+test_wait_with_null_entries(void)
+{
+    struct gaicb req;
+    struct gaicb *list[2];
+    struct addrinfo hints;
+
+    memset(&req, 0, sizeof(req));
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_flags  = AI_NUMERICHOST;
+    req.ar_name     = "127.0.0.1";
+    req.ar_request  = &hints;
+
+    list[0] = NULL;
+    list[1] = &req;
+
+    MUST(nsgai_getaddrinfo_a(GAI_WAIT, list, 2, NULL) == 0);
+    MUST(req.__return == 0);
+    MUST(req.ar_result != NULL);
+    nsgai_freeaddrinfo(req.ar_result);
+    return 0;
+}
+
+static int
+test_nowait_ns_and_null_hints_paths(void)
+{
+    struct gaicb req1, req2, req3;
+    struct gaicb *list[1];
+
+    memset(&req1, 0, sizeof(req1));
+    memset(&req2, 0, sizeof(req2));
+    memset(&req3, 0, sizeof(req3));
+
+    req1.ar_name    = "127.0.0.1";
+    req1.ar_request = NULL;
+    list[0]         = &req1;
+    MUST(nsgai_getaddrinfo_a(GAI_NOWAIT, list, 1, NULL) == 0);
+    MUST(wait_for_completion((const struct gaicb *const *)list, 1, &req1) == 0);
+    MUST(nsgai_error(&req1) == 0);
+    MUST(req1.ar_result != NULL);
+    nsgai_freeaddrinfo(req1.ar_result);
+
+    req2.ar_name = "127.0.0.1";
+    list[0]      = &req2;
+    MUST(nsgai_getaddrinfo_a_ns(NULL, GAI_NOWAIT, list, 1, NULL) == 0);
+    MUST(wait_for_completion((const struct gaicb *const *)list, 1, &req2) == 0);
+    MUST(nsgai_error(&req2) == 0);
+    MUST(req2.ar_result != NULL);
+    nsgai_freeaddrinfo(req2.ar_result);
+
+    req3.ar_name = "127.0.0.1";
+    list[0]      = &req3;
+    MUST(nsgai_getaddrinfo_a_nsfd(-1, GAI_NOWAIT, list, 1, NULL) == 0);
+    MUST(wait_for_completion((const struct gaicb *const *)list, 1, &req3) == 0);
+    MUST(nsgai_error(&req3) == 0);
+    MUST(req3.ar_result != NULL);
+    nsgai_freeaddrinfo(req3.ar_result);
+
+    return 0;
+}
+
+static int
+test_nowait_nsfd_explicit_path(void)
+{
+    int nsfd;
+    struct gaicb req;
+    struct gaicb *list[1];
+
+    nsfd = open("/proc/self/ns/net", O_RDONLY | O_CLOEXEC);
+    MUST(nsfd >= 0);
+
+    memset(&req, 0, sizeof(req));
+    req.ar_name = "127.0.0.1";
+    list[0]     = &req;
+
+    MUST(nsgai_getaddrinfo_a_nsfd(nsfd, GAI_NOWAIT, list, 1, NULL) == 0);
+    MUST(wait_for_completion((const struct gaicb *const *)list, 1, &req) == 0);
+    MUST(nsgai_error(&req) == 0);
+    MUST(req.ar_result != NULL);
+    nsgai_freeaddrinfo(req.ar_result);
+    close(nsfd);
+    return 0;
+}
+
+static int
+test_suspend_clock_and_timedwait_errors(void)
+{
+    struct gaicb req;
+    const struct gaicb *list[1];
+    struct timespec timeout;
+
+    memset(&req, 0, sizeof(req));
+    memset(&g_wrap, 0, sizeof(g_wrap));
+    req.__return    = EAI_INPROGRESS;
+    list[0]         = &req;
+    timeout.tv_sec  = 0;
+    timeout.tv_nsec = 1000000;
+
+    g_wrap.armed_clock_gettime = 1;
+    MUST(nsgai_suspend(list, 1, &timeout) == EAI_SYSTEM);
+
+    g_wrap.armed_cond_timedwait = 1;
+    g_wrap.cond_timedwait_rc    = EINVAL;
+    MUST(nsgai_suspend(list, 1, &timeout) == EAI_SYSTEM);
+
+    return 0;
+}
+
+static int
+test_invalid_inputs_and_suspend_edges(void)
+{
+    struct gaicb req;
+    struct gaicb *list[1];
+    struct timespec timeout;
+
+    memset(&req, 0, sizeof(req));
+    list[0] = &req;
+
+    MUST(nsgai_getaddrinfo_a(GAI_NOWAIT, list, -1, NULL) == EAI_SYSTEM);
+    MUST(nsgai_getaddrinfo_a_ns(
+             "definitely-no-such-ns", GAI_NOWAIT, list, 1, NULL) == EAI_SYSTEM);
+    MUST(nsgai_getaddrinfo_a_nsfd(999999, GAI_NOWAIT, list, 1, NULL) ==
+         EAI_SYSTEM);
+
+    MUST(nsgai_suspend((const struct gaicb *const *)list, -1, NULL) ==
+         EAI_SYSTEM);
+    MUST(nsgai_suspend((const struct gaicb *const *)list, 0, NULL) ==
+         EAI_ALLDONE);
+
+    timeout.tv_sec  = 0;
+    timeout.tv_nsec = 1000000;
+    MUST(nsgai_suspend((const struct gaicb *const *)list, 0, &timeout) ==
+         EAI_ALLDONE);
+
+    MUST(nsgai_error(NULL) == EAI_SYSTEM);
+
+    req.__return = EAI_INPROGRESS;
+    MUST(nsgai_cancel(&req) == EAI_NOTCANCELED);
+    req.__return = 0;
+    MUST(nsgai_cancel(&req) == EAI_ALLDONE);
+
+    return 0;
+}
+
+static int
 test_ns_aliases(void)
 {
     struct gaicb req1, req2;
@@ -353,8 +600,7 @@ test_cancel_all(void)
 
     MUST(nsgai_getaddrinfo_a(GAI_NOWAIT, list, 2, NULL) == 0);
     cancel_rc = nsgai_cancel(NULL);
-    MUST(cancel_rc == EAI_CANCELED || cancel_rc == EAI_NOTCANCELED ||
-         cancel_rc == EAI_ALLDONE);
+    MUST(cancel_rc == EAI_CANCELED || cancel_rc == EAI_ALLDONE);
 
     MUST(nsgai_error(&req1) != EAI_INPROGRESS);
     MUST(nsgai_error(&req2) != EAI_INPROGRESS);
@@ -374,6 +620,8 @@ test_cancel_all(void)
         MUST(nsgai_error(&req2) == EAI_CANCELED);
         MUST(req2.ar_result == NULL);
     }
+
+    MUST(nsgai_cancel(NULL) == EAI_ALLDONE);
 
     return 0;
 }
@@ -441,6 +689,21 @@ test_libc_aliases(void)
 int
 main(void)
 {
+    if (test_nowait_allocation_and_worker_failures()) {
+        return 1;
+    }
+    if (test_wait_with_null_entries()) {
+        return 1;
+    }
+    if (test_nowait_ns_and_null_hints_paths()) {
+        return 1;
+    }
+    if (test_nowait_nsfd_explicit_path()) {
+        return 1;
+    }
+    if (test_suspend_clock_and_timedwait_errors()) {
+        return 1;
+    }
     if (test_wait_mode()) {
         return 1;
     }
@@ -454,6 +717,9 @@ main(void)
         return 1;
     }
     if (test_bad_mode()) {
+        return 1;
+    }
+    if (test_invalid_inputs_and_suspend_edges()) {
         return 1;
     }
     if (test_ns_aliases()) {

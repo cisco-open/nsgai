@@ -31,6 +31,11 @@ cleanup_perms() {
 }
 trap cleanup_perms EXIT
 
+# This build tree is dedicated to the container workflow. Recreate it on
+# each run so compiler/toolchain changes in the image cannot leave behind
+# stale objects or coverage metadata that break gcov/gcovr processing.
+rm -rf "$BUILD_DIR"
+
 echo "==> Configuring (coverage + netns tests)"
 cmake -S . -B "$BUILD_DIR" \
     -DCMAKE_BUILD_TYPE=Debug \

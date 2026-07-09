@@ -112,12 +112,14 @@ static int
 test_ares_init_enomem(void)
 {
     reset();
+    CHECK(nsgai_set_lookup_policy(NSGAI_LOOKUP_DNS_ONLY) == 0);
     g.armed_ares_init  = 1;
     g.ares_init_status = ARES_ENOMEM;
     struct addrinfo *r = NULL;
     int rc             = nsgai_getaddrinfo("localhost", NULL, NULL, &r);
     CHECK(rc == EAI_MEMORY);
     CHECK(r == NULL);
+    CHECK(nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_FIRST) == 0);
     return 0;
 }
 
@@ -125,12 +127,14 @@ static int
 test_ares_init_generic(void)
 {
     reset();
+    CHECK(nsgai_set_lookup_policy(NSGAI_LOOKUP_DNS_ONLY) == 0);
     g.armed_ares_init  = 1;
     g.ares_init_status = ARES_ENOTINITIALIZED;
     struct addrinfo *r = NULL;
     int rc             = nsgai_getaddrinfo("localhost", NULL, NULL, &r);
     CHECK(rc == EAI_SYSTEM);
     CHECK(r == NULL);
+    CHECK(nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_FIRST) == 0);
     return 0;
 }
 
@@ -138,6 +142,7 @@ static int
 test_getnameinfo_channel_fail(void)
 {
     reset();
+    CHECK(nsgai_set_lookup_policy(NSGAI_LOOKUP_DNS_ONLY) == 0);
     g.armed_ares_init     = 1;
     g.ares_init_status    = ARES_ENOMEM;
     struct sockaddr_in sa = {0};
@@ -145,8 +150,9 @@ test_getnameinfo_channel_fail(void)
     sa.sin_addr.s_addr    = htonl(0x7f000001);
     char host[64];
     int rc = nsgai_getnameinfo((struct sockaddr *)&sa, sizeof(sa), host,
-        sizeof(host), NULL, 0, NI_NUMERICHOST);
+        sizeof(host), NULL, 0, NI_NAMEREQD);
     CHECK(rc == EAI_MEMORY);
+    CHECK(nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_FIRST) == 0);
     return 0;
 }
 
@@ -177,11 +183,13 @@ test_fcntl_dup_fail_in_cache_build(void)
     int nsfd = open("/proc/self/ns/net", O_RDONLY | O_CLOEXEC);
     CHECK(nsfd >= 0);
     reset();
+    CHECK(nsgai_set_lookup_policy(NSGAI_LOOKUP_DNS_ONLY) == 0);
     g.armed_fcntl_dup_nth = 2;
     struct addrinfo *r    = NULL;
     int rc = nsgai_getaddrinfo_nsfd(nsfd, "localhost", NULL, NULL, &r);
     /* The path returns ARES_ENOMEM mapped to EAI_MEMORY. */
     CHECK(rc == EAI_MEMORY);
+    CHECK(nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_FIRST) == 0);
     close(nsfd);
     return 0;
 }
