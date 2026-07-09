@@ -81,6 +81,7 @@ struct nsgai_channel {
     /* Cache state. */
     int refcount;
     bool stale;
+    bool cacheable;
     uint64_t lru_seq;
     struct nsgai_channel *next;
 };
@@ -466,8 +467,11 @@ cache_find_lru_idle(void)
  * @brief Build and insert a fresh cache entry while lock is held.
  */
 static int
-cache_build_locked(
-    const nsgai_ns_t *ns, dev_t dev, ino_t ino, nsgai_channel_t **out)
+channel_build_common(const nsgai_ns_t *ns,
+    dev_t dev,
+    ino_t ino,
+    bool cacheable,
+    nsgai_channel_t **out)
 {
     nsgai_channel_t *e = calloc(1, sizeof(*e));
     if (!e) {
@@ -478,6 +482,7 @@ cache_build_locked(
     e->key_ino    = ino;
     e->key_has_fd = (ns && ns->netns_fd >= 0);
     e->netns_fd   = -1;
+    e->cacheable  = cacheable;
 
     if (ns && ns->netns_fd >= 0) {
         e->netns_fd = fcntl(ns->netns_fd, F_DUPFD_CLOEXEC, 0);
@@ -541,10 +546,21 @@ cache_build_locked(
     ares_set_socket_functions(e->channel, &k_sockfns, &e->sockctx);
 #endif   // ndef NSGAI_HAVE_CARES_SOCKFUNCS_EX
 
-    e->refcount  = 1;
-    e->next      = g_cache_head;
-    g_cache_head = e;
-    *out         = e;
+    e->refcount = 1;
+    *out        = e;
+    return ARES_SUCCESS;
+}
+
+static int
+cache_build_locked(
+    const nsgai_ns_t *ns, dev_t dev, ino_t ino, nsgai_channel_t **out)
+{
+    int rc = channel_build_common(ns, dev, ino, true, out);
+    if (rc != ARES_SUCCESS) {
+        return rc;
+    }
+    (*out)->next = g_cache_head;
+    g_cache_head = *out;
     return ARES_SUCCESS;
 }
 
@@ -635,6 +651,19 @@ nsgai_channel_create(const nsgai_ns_t *ns, nsgai_channel_t **out)
     return rc;
 }
 
+int
+nsgai_channel_create_uncached(const nsgai_ns_t *ns, nsgai_channel_t **out)
+{
+    dev_t dev;
+    ino_t ino;
+
+    if (compute_ns_key(ns, &dev, &ino) != 0) {
+        return ARES_EFILE;
+    }
+
+    return channel_build_common(ns, dev, ino, false, out);
+}
+
 void
 nsgai_channel_destroy(nsgai_channel_t *ch)
 {
@@ -647,6 +676,12 @@ nsgai_channel_destroy(nsgai_channel_t *ch)
 
     nsgai_pthread_mutex_lock_or_abort(
         &g_cache_lock, "pthread_mutex_lock(g_cache_lock)");
+    if (!ch->cacheable) {
+        nsgai_pthread_mutex_unlock_or_abort(
+            &g_cache_lock, "pthread_mutex_unlock(g_cache_lock)");
+        entry_free(ch);
+        return;
+    }
     if (--ch->refcount == 0) {
         if (ch->stale) {
             cache_unlink(ch);

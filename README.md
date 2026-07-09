@@ -7,7 +7,8 @@ All rights reserved.
 # nsgai — network-namespace-aware getaddrinfo via c-ares
 
 `nsgai` is a small Linux library that provides
-`getaddrinfo()` / `freeaddrinfo()` / `getnameinfo()` replacements
+`getaddrinfo()` / `freeaddrinfo()` / `getnameinfo()` replacements,
+plus the GNU `getaddrinfo_a()` / `gai_*()` asynchronous family,
 which can resolve names in a specific **network namespace** while the
 calling process stays multi-tenant — i.e. without `fork()`, without
 moving the caller's thread to a different netns, and without rebuilding
@@ -24,7 +25,7 @@ It ships three shared objects:
 
 | Shared object              | Purpose                                                  |
 |----------------------------|----------------------------------------------------------|
-| `libnsgai.so`              | Public C API: `nsgai_getaddrinfo`, `nsgai_getaddrinfo_ns`, `nsgai_getaddrinfo_nsfd`, `nsgai_getnameinfo*`, `nsgai_freeaddrinfo`, `nsgai_gai_strerror`. Also defines the POSIX-named symbols (`getaddrinfo`, …) as **weak** aliases — linking against `libnsgai` replaces libc's resolver. |
+| `libnsgai.so`              | Public C API: `nsgai_getaddrinfo`, `nsgai_getaddrinfo_ns`, `nsgai_getaddrinfo_nsfd`, `nsgai_getnameinfo*`, `nsgai_getaddrinfo_a*`, `nsgai_suspend`, `nsgai_error`, `nsgai_cancel`, `nsgai_freeaddrinfo`, `nsgai_gai_strerror`. Also defines the POSIX/GNU-named symbols (`getaddrinfo`, `getaddrinfo_a`, `gai_*`, …) as **weak** aliases — linking against `libnsgai` replaces libc's resolver. |
 | `libnsgai_preload.so`      | `LD_PRELOAD` shim. **Unconditionally** forwards `getaddrinfo`/`freeaddrinfo`/`gai_strerror`/`getnameinfo` to `nsgai_*`. There is no fall-through to libc — preloading is opting in for the whole process. |
 | `libnss_nsgai.so.2`        | NSS module (`_nss_nsgai_gethostbyname[2/4]_r`, `_nss_nsgai_gethostbyaddr[2]_r`). Usable from `/etc/nsswitch.conf`. |
 
@@ -46,6 +47,21 @@ int  nsgai_getnameinfo_nsfd(int ns_fd,           /* + same args */);
 
 void nsgai_freeaddrinfo(struct addrinfo *res);
 const char *nsgai_gai_strerror(int errcode);
+
+#ifdef __USE_GNU
+int nsgai_getaddrinfo_a(int mode, struct gaicb *list[], int ent,
+                        struct sigevent *sig);
+int nsgai_getaddrinfo_a_ns(const char *ns_name, int mode,
+                           struct gaicb *list[], int ent,
+                           struct sigevent *sig);
+int nsgai_getaddrinfo_a_nsfd(int ns_fd, int mode,
+                             struct gaicb *list[], int ent,
+                             struct sigevent *sig);
+int nsgai_suspend(const struct gaicb *const list[], int ent,
+                  const struct timespec *timeout);
+int nsgai_error(struct gaicb *req);
+int nsgai_cancel(struct gaicb *req);
+#endif
 ```
 
 That's it.  There is intentionally no thread-local "default ns"
@@ -53,6 +69,16 @@ override and no environment-variable-based selection — they were
 removed in v0.2 because they made the chain-of-ownership of returned
 buffers unpredictable and obscured *who decides* which ns a lookup
 runs in.
+
+The GNU async entry points follow the same namespace-selection rules as
+the synchronous API:
+
+* `nsgai_getaddrinfo_a()` resolves in the calling thread's current
+  namespace.
+* `nsgai_getaddrinfo_a_ns()` targets a named namespace, with `NULL`
+  meaning the calling thread's current namespace.
+* `nsgai_getaddrinfo_a_nsfd()` targets a namespace fd, with a negative
+  fd meaning the calling thread's current namespace.
 
 ## How the namespace is chosen
 
@@ -188,6 +214,12 @@ cc myapp.c -L/path/to/nsgai/build -lnsgai -Wl,-rpath,/path/to/nsgai/build
 
 `getaddrinfo`/`freeaddrinfo`/`getnameinfo` are now `nsgai_*` — calls
 are resolved in the calling thread's netns.
+
+If you install the library, a pkg-config file is also provided:
+
+```sh
+pkg-config --cflags --libs nsgai
+```
 
 ## Use as LD_PRELOAD (non-transparent)
 

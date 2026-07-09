@@ -24,17 +24,27 @@ NSGAI_0 {
         nsgai_getaddrinfo;
         nsgai_getaddrinfo_ns;
         nsgai_getaddrinfo_nsfd;
+        nsgai_getaddrinfo_a;
+        nsgai_getaddrinfo_a_ns;
+        nsgai_getaddrinfo_a_nsfd;
         nsgai_getnameinfo;
         nsgai_getnameinfo_ns;
         nsgai_getnameinfo_nsfd;
         nsgai_freeaddrinfo;
         nsgai_gai_strerror;
+        nsgai_suspend;
+        nsgai_error;
+        nsgai_cancel;
 
         /* Weak POSIX-named aliases - linking libnsgai replaces libc. */
         getaddrinfo;
+        getaddrinfo_a;
         getnameinfo;
         freeaddrinfo;
         gai_strerror;
+        gai_suspend;
+        gai_error;
+        gai_cancel;
 
     local:
         *;

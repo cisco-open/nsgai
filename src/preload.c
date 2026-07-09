@@ -23,6 +23,8 @@
 
 #include "nsgai.h"
 
+#include <stddef.h>
+
 /**
  * @brief POSIX getaddrinfo alias routed to nsgai implementation.
  */
@@ -67,3 +69,31 @@ getnameinfo(const struct sockaddr *sa,
 {
     return nsgai_getnameinfo(sa, salen, host, hostlen, serv, servlen, flags);
 }
+
+#ifdef __USE_GNU
+int
+getaddrinfo_a(
+    int mode, struct gaicb *list[__restrict_arr], int ent, struct sigevent *sig)
+{
+    return nsgai_getaddrinfo_a(mode, list, ent, sig);
+}
+
+int
+gai_suspend(
+    const struct gaicb *const list[], int ent, const struct timespec *timeout)
+{
+    return nsgai_suspend(list, ent, timeout);
+}
+
+int
+gai_error(struct gaicb *req)
+{
+    return nsgai_error(req);
+}
+
+int
+gai_cancel(struct gaicb *req)
+{
+    return nsgai_cancel(req);
+}
+#endif

@@ -104,6 +104,7 @@ add_library(nsgai_core OBJECT
     src/nsgai_ns.c
     src/nsgai_channel.c
     src/nsgai_addrinfo.c
+    src/nsgai_async.c
 )
 target_include_directories(nsgai_core
     PUBLIC  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -191,6 +192,9 @@ if(NSGAI_BUILD_TESTS)
     add_executable(test_rsyslog_null_node_regression
         test/test_rsyslog_null_node_regression.c)
     target_link_libraries(test_rsyslog_null_node_regression PRIVATE nsgai)
+
+    add_executable(test_async_api test/test_async_api.c)
+    target_link_libraries(test_async_api PRIVATE nsgai pthread)
 
     # Coverage-focused test for the per-namespace channel cache.
     # Requires CAP_SYS_ADMIN for unshare(CLONE_NEWNET); self-skips
@@ -281,6 +285,7 @@ if(NSGAI_BUILD_TESTS)
     add_test(NAME nsgai_api_coverage COMMAND test_api_coverage)
     add_test(NAME nsgai_rsyslog_null_node_regression
              COMMAND test_rsyslog_null_node_regression)
+    add_test(NAME nsgai_async_api COMMAND test_async_api)
     add_test(NAME nsgai_api_coverage_preload COMMAND test_api_coverage)
     set_tests_properties(nsgai_api_coverage_preload PROPERTIES
         ENVIRONMENT "LD_PRELOAD=$<TARGET_FILE:nsgai>")
@@ -321,6 +326,8 @@ if(NSGAI_BUILD_TESTS)
                  COMMAND ${_vg} $<TARGET_FILE:test_api_coverage>)
         add_test(NAME nsgai_rsyslog_null_node_regression_valgrind
                  COMMAND ${_vg} $<TARGET_FILE:test_rsyslog_null_node_regression>)
+        add_test(NAME nsgai_async_api_valgrind
+                 COMMAND ${_vg} $<TARGET_FILE:test_async_api>)
         if(NSGAI_BUILD_EXAMPLES)
             add_test(NAME nsgai_adig_valgrind
                      COMMAND ${_vg} $<TARGET_FILE:nsgai_adig> -4 -c localhost)
@@ -406,6 +413,9 @@ install(TARGETS nsgai
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES include/nsgai.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+configure_file(nsgai.pc.in nsgai.pc @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/nsgai.pc
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 if(NSGAI_BUILD_PRELOAD)
     install(TARGETS nsgai_preload LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()

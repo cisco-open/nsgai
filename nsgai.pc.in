@@ -1,0 +1,11 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${exec_prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: nsgai
+Description: Network-namespace-aware getaddrinfo replacement
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lnsgai
+Cflags: -I${includedir}
+Requires.private: libcares

@@ -99,6 +99,19 @@ int
 nsgai_channel_create(const nsgai_ns_t *ns, nsgai_channel_t **out);
 
 /**
+ * @brief Build a dedicated uncached channel configured for @p ns.
+ *
+ * This is intended for async request state that must not share channel
+ * ownership or polling responsibilities with the cached synchronous path.
+ *
+ * @param ns Namespace selection descriptor.
+ * @param out Output channel handle.
+ * @return c-ares status code.
+ */
+int
+nsgai_channel_create_uncached(const nsgai_ns_t *ns, nsgai_channel_t **out);
+
+/**
  * @brief Release a channel handle acquired via nsgai_channel_create().
  *
  * @param ch Channel handle (NULL allowed).

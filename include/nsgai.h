@@ -38,6 +38,7 @@
 #define NSGAI_H
 
 #include <netdb.h>
+#include <signal.h>
 #include <sys/socket.h>
 
 #ifdef __cplusplus
@@ -84,6 +85,20 @@ extern "C" {
 #define NSGAI_VERSION_MINOR 2
 /** @brief Patch version of the nsgai public API. */
 #define NSGAI_VERSION_PATCH 0
+
+#ifdef __USE_GNU
+/**
+ * @defgroup nsgai_async GNU-style asynchronous getaddrinfo
+ * @brief Async lookup API compatible with glibc's gaicb request structure.
+ *
+ * These functions mirror the GNU getaddrinfo_a/gai_* family. Namespace-aware
+ * variants follow the same suffix pattern as the synchronous API.
+ *
+ * Completed request status is stored in the caller-provided struct gaicb, so
+ * callers can use the same request object shape regardless of whether they
+ * select libc or nsgai.
+ */
+#endif
 
 /** @addtogroup nsgai_implicit
  *  @{ */
@@ -246,6 +261,97 @@ nsgai_getnameinfo_nsfd(int ns_fd,
 
 /** @} */
 
+#ifdef __USE_GNU
+/** @addtogroup nsgai_async
+ *  @{ */
+
+/**
+ * @brief Enqueue or synchronously execute one or more getaddrinfo requests.
+ *
+ * The request objects use the GNU struct gaicb layout and resolve in the
+ * calling thread's current network namespace.
+ *
+ * @param mode GAI_WAIT or GAI_NOWAIT.
+ * @param list Array of gaicb request pointers.
+ * @param ent Number of entries in @p list.
+ * @param sig Optional asynchronous completion notification for GAI_NOWAIT.
+ * @return 0 if requests were accepted, otherwise EAI_* setup error.
+ */
+int
+nsgai_getaddrinfo_a(int mode,
+    struct gaicb *list[__restrict_arr],
+    int ent,
+    struct sigevent *sig);
+
+/**
+ * @brief Enqueue or synchronously execute requests in a named target netns.
+ *
+ * @param ns_name Namespace name under /var/run/netns, or NULL to resolve in
+ *        the calling thread's current network namespace.
+ * @param mode GAI_WAIT or GAI_NOWAIT.
+ * @param list Array of gaicb request pointers.
+ * @param ent Number of entries in @p list.
+ * @param sig Optional asynchronous completion notification for GAI_NOWAIT.
+ * @return 0 if requests were accepted, otherwise EAI_* setup error.
+ */
+int
+nsgai_getaddrinfo_a_ns(const char *ns_name,
+    int mode,
+    struct gaicb *list[__restrict_arr],
+    int ent,
+    struct sigevent *sig);
+
+/**
+ * @brief Enqueue or synchronously execute requests in a target netns by fd.
+ *
+ * @param ns_fd Open netns fd, or a negative value to resolve in the current
+ *        thread's network namespace.
+ * @param mode GAI_WAIT or GAI_NOWAIT.
+ * @param list Array of gaicb request pointers.
+ * @param ent Number of entries in @p list.
+ * @param sig Optional asynchronous completion notification for GAI_NOWAIT.
+ * @return 0 if requests were accepted, otherwise EAI_* setup error.
+ */
+int
+nsgai_getaddrinfo_a_nsfd(int ns_fd,
+    int mode,
+    struct gaicb *list[__restrict_arr],
+    int ent,
+    struct sigevent *sig);
+
+/**
+ * @brief Wait until at least one listed request completes.
+ *
+ * @param list Array of gaicb request pointers.
+ * @param ent Number of entries in @p list.
+ * @param timeout Optional relative timeout.
+ * @return 0 if at least one request completed, else EAI_*.
+ */
+int
+nsgai_suspend(
+    const struct gaicb *const list[], int ent, const struct timespec *timeout);
+
+/**
+ * @brief Query status of an asynchronous request.
+ *
+ * @param req Request to query.
+ * @return EAI_INPROGRESS, 0, or an error code.
+ */
+int
+nsgai_error(struct gaicb *req);
+
+/**
+ * @brief Attempt to cancel one or more asynchronous requests.
+ *
+ * @param req Request to cancel, or NULL to cancel all outstanding requests.
+ * @return EAI_CANCELED, EAI_NOTCANCELED, or EAI_ALLDONE.
+ */
+int
+nsgai_cancel(struct gaicb *req);
+
+/** @} */
+#endif
+
 /** @addtogroup nsgai_posix
  *  @{ */
 
@@ -278,6 +384,28 @@ getnameinfo(const struct sockaddr *sa,
     char *serv,
     socklen_t servlen,
     int flags);
+
+#ifdef __USE_GNU
+/** @brief GNU getaddrinfo_a() alias routed to nsgai in the current namespace. */
+int
+getaddrinfo_a(int mode,
+    struct gaicb *list[__restrict_arr],
+    int ent,
+    struct sigevent *sig);
+
+/** @brief GNU gai_suspend() alias routed to nsgai. */
+int
+gai_suspend(
+    const struct gaicb *const list[], int ent, const struct timespec *timeout);
+
+/** @brief GNU gai_error() alias routed to nsgai. */
+int
+gai_error(struct gaicb *req);
+
+/** @brief GNU gai_cancel() alias routed to nsgai. */
+int
+gai_cancel(struct gaicb *req);
+#endif
 
 /** @} */
 
