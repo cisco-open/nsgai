@@ -128,18 +128,10 @@ static int
 wait_for_completion(const struct gaicb *const *list, int ent, struct gaicb *req)
 {
     struct timespec timeout;
-    int rc;
-    int spins = 0;
 
     timeout.tv_sec  = 5;
     timeout.tv_nsec = 0;
-    do {
-        rc = nsgai_suspend(list, ent, &timeout);
-    } while (rc == EAI_AGAIN &&
-             ((req != NULL && nsgai_error(req) == EAI_INPROGRESS) ||
-                 (req == NULL && spins++ < 10)));
-
-    return rc;
+    return nsgai_suspend(list, ent, &timeout);
 }
 
 static int

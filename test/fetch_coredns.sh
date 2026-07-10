@@ -25,7 +25,7 @@
 
 set -euo pipefail
 
-COREDNS_VERSION="${COREDNS_VERSION:-1.11.3}"
+COREDNS_VERSION="${COREDNS_VERSION:-1.14.5}"
 DEST="${1:-build}"
 
 case "$(uname -m)" in

@@ -363,6 +363,7 @@ if(NSGAI_BUILD_TESTS)
     add_test(NAME nsgai_teardown_dlopen
              COMMAND test_teardown_dlopen $<TARGET_FILE:nsgai>)
     add_test(NAME nsgai_async_api COMMAND test_async_api)
+    set_tests_properties(nsgai_async_api PROPERTIES TIMEOUT 30)
     add_test(NAME nsgai_api_coverage_preload COMMAND test_api_coverage)
     set_tests_properties(nsgai_api_coverage_preload PROPERTIES
         ENVIRONMENT "LD_PRELOAD=$<TARGET_FILE:nsgai>")

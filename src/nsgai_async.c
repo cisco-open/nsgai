@@ -337,7 +337,9 @@ nsgai_async_worker_main(void *arg)
         nfds_t channel_pfd_count[32];
         nfds_t channel_count = 0;
         nfds_t nfds          = 0;
-        int timeout_ms       = -1;
+        /* Recheck periodically because a request can be submitted after the
+         * worker snapshots the channel list but before it enters poll(). */
+        int timeout_ms = 100;
 
         nsgai_pthread_mutex_lock_or_abort(
             &g_async_mu, "pthread_mutex_lock(async)");
