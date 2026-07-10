@@ -32,9 +32,10 @@ if [[ $EUID -ne 0 ]]; then
     echo "SKIP: integration policy test requires root" >&2
     exit 77
 fi
-if ! command -v ip >/dev/null 2>&1; then
-    echo "SKIP: 'ip' not found" >&2
-    exit 77
+IP="$(command -v ip || true)"
+if [[ -z "$IP" || ! -x "$IP" ]]; then
+  echo "SKIP: 'ip' not found" >&2
+  exit 77
 fi
 
 COREDNS_BIN="${COREDNS:-}"
@@ -60,7 +61,7 @@ cleanup() {
         [[ -n "$pid" ]] && kill "$pid" 2>/dev/null
     done
     for ns in "${NSNAMES[@]:-}"; do
-        ip netns del "$ns" 2>/dev/null
+        "${IP}" netns del "$ns" 2>/dev/null
         rm -rf "/etc/netns/${ns}"
     done
     rm -rf "$WORK"
@@ -124,8 +125,8 @@ EOF
 ${hosts_addr} ${HOST}
 EOF
 
-    ip netns add "$ns"
-    nsenter --net="/var/run/netns/${ns}" -- ip link set lo up
+    "${IP}" netns add "$ns"
+    nsenter --net="/var/run/netns/${ns}" -- "${IP}" link set lo up
     nsenter --net="/var/run/netns/${ns}" -- \
         "$COREDNS_BIN" -conf "${nsdir}/Corefile" \
         >"${nsdir}/coredns.log" 2>&1 &

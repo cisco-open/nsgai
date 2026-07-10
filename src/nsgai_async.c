@@ -158,6 +158,7 @@ nsgai_async_request_free(nsgai_async_req_t *req)
     free(req);
 }
 
+#ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
 static int
 nsgai_async_has_done_locked(void)
 {
@@ -168,6 +169,7 @@ nsgai_async_has_done_locked(void)
     }
     return 0;
 }
+#endif   // ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
 
 static void
 nsgai_async_complete_locked(

@@ -843,9 +843,13 @@ nsgai_format_service(
 
     uint16_t port_n = 0;
     if (sa->sa_family == AF_INET) {
-        port_n = ((const struct sockaddr_in *)sa)->sin_port;
+        struct sockaddr_in sin;
+        memcpy(&sin, sa, sizeof(sin));
+        port_n = sin.sin_port;
     } else if (sa->sa_family == AF_INET6) {
-        port_n = ((const struct sockaddr_in6 *)sa)->sin6_port;
+        struct sockaddr_in6 sin6;
+        memcpy(&sin6, sa, sizeof(sin6));
+        port_n = sin6.sin6_port;
     } else {
         return EAI_FAMILY;
     }

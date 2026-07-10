@@ -25,13 +25,35 @@ find_system_lib() {
     return 1
 }
 
+find_first_system_lib() {
+    local name
+
+    for name in "$@"; do
+        local path
+        path="$(find_system_lib "$name")" || continue
+        printf '%s\n' "${path}"
+        return 0
+    done
+
+    return 1
+}
+
 NSS_MODULE="$(find_system_lib libnss_nsgai.so.2)" || {
     echo "FAIL: could not find system-installed libnss_nsgai.so.2" >&2
     exit 1
 }
 
-PRELOAD_LIB="$(find_system_lib libnsgai_preload.so)" || {
-    echo "FAIL: could not find system-installed libnsgai_preload.so" >&2
+NSGAI_LIB="$(find_first_system_lib \
+    libnsgai.so.0 \
+    libnsgai.so)" || {
+    echo "FAIL: could not find system-installed libnsgai.so.0 or libnsgai.so" >&2
+    exit 1
+}
+
+PRELOAD_LIB="$(find_first_system_lib \
+    libnsgai_preload.so.0 \
+    libnsgai_preload.so)" || {
+    echo "FAIL: could not find system-installed libnsgai_preload.so.0 or libnsgai_preload.so" >&2
     exit 1
 }
 
@@ -59,6 +81,10 @@ run_test() {
 
 run_test nsgai_basic ./nsgai_test
 run_test nsgai_api_coverage ./test_api_coverage
+run_test nsgai_rsyslog_null_node_regression ./test_rsyslog_null_node_regression
+run_test nsgai_async_api ./test_async_api
+run_test nsgai_api_coverage_preload \
+    env LD_PRELOAD="${NSGAI_LIB}" ./test_api_coverage
 run_test nsgai_channel_failures ./test_channel_failures
 run_test nsgai_nss_failures ./test_nss_failures
 run_test nsgai_channel_cache ./test_channel_cache

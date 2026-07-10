@@ -36,9 +36,10 @@ if [[ $EUID -ne 0 ]]; then
     echo "SKIP: integration test requires root" >&2
     exit 77   # CTest "skip" exit code if configured; treat as skipped
 fi
-if ! command -v ip >/dev/null 2>&1; then
-    echo "SKIP: 'ip' not found" >&2
-    exit 77
+IP="$(command -v ip || true)"
+if [[ -z "$IP" || ! -x "$IP" ]]; then
+  echo "SKIP: 'ip' not found" >&2
+  exit 77
 fi
 
 NS="nsgai_it_$$"
@@ -48,7 +49,7 @@ EXPECT_V4="127.42.42.42"
 
 cleanup() {
     set +e
-    ip netns del "${NS}" 2>/dev/null
+    "${IP}" netns del "${NS}" 2>/dev/null
     rm -rf "${NS_ETC}"
 }
 trap cleanup EXIT
@@ -69,8 +70,8 @@ nameserver 127.0.0.1
 options timeout:1 attempts:1
 EOF
 
-ip netns add "${NS}"
-nsenter --net="/var/run/netns/${NS}" -- ip link set lo up
+"${IP}" netns add "${NS}"
+nsenter --net="/var/run/netns/${NS}" -- "${IP}" link set lo up
 
 check() {
     local label="$1"; shift

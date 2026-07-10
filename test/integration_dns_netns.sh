@@ -55,9 +55,10 @@ if [[ $EUID -ne 0 ]]; then
     echo "SKIP: integration test requires root" >&2
     exit 77
 fi
-if ! command -v ip >/dev/null 2>&1; then
-    echo "SKIP: 'ip' not found" >&2
-    exit 77
+IP="$(command -v ip || true)"
+if [[ -z "$IP" || ! -x "$IP" ]]; then
+  echo "SKIP: 'ip' not found" >&2
+  exit 77
 fi
 
 # Locate coredns
@@ -111,7 +112,7 @@ cleanup() {
         [[ -n "$pid" ]] && kill "$pid" 2>/dev/null
     done
     for ns in "${NSNAMES[@]:-}"; do
-        ip netns del "$ns" 2>/dev/null
+        "${IP}" netns del "$ns" 2>/dev/null
         rm -rf "/etc/netns/${ns}"
     done
     rm -rf "$WORK"
@@ -189,8 +190,8 @@ nameserver ${NAMESERVER_IP}
 options timeout:1 attempts:2 ndots:0
 EOF
 
-    ip netns add "$ns"
-    nsenter --net="/var/run/netns/${ns}" -- ip link set lo up
+    "${IP}" netns add "$ns"
+    nsenter --net="/var/run/netns/${ns}" -- "${IP}" link set lo up
 
     # Launch coredns inside the ns; redirect output for diagnostics.
     # nsenter is used in place of `ip netns exec` so we don't remount

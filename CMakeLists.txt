@@ -277,6 +277,8 @@ if(NSGAI_BUILD_TESTS)
         "LINKER:--wrap=socket"
         "LINKER:--wrap=setns"
         "LINKER:--wrap=open"
+        "LINKER:--wrap=open64"
+        "LINKER:--wrap=__open_2"
         "LINKER:--wrap=fcntl"
         "LINKER:--wrap=ares_init_options"
         "LINKER:--wrap=ares_getaddrinfo"

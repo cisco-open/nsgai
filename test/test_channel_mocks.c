@@ -162,22 +162,33 @@ __wrap_setns(int fd, int nstype)
 
 extern int
 __real_open(const char *, int, ...);
-int
-__wrap_open(const char *path, int flags, ...)
+
+static int
+nsgai_test_forward_open(int (*real_open_fn)(const char *, int, ...),
+    const char *path,
+    int flags,
+    va_list ap)
 {
     mode_t mode = 0;
     if (flags & O_CREAT) {
-        va_list ap;
-        va_start(ap, flags);
         mode = va_arg(ap, mode_t);
-        va_end(ap);
     }
     if (g_mock.armed_open_path && strcmp(path, g_mock.armed_open_path) == 0) {
         g_mock.armed_open_path = NULL;
         errno                  = g_mock.open_errno;
         return -1;
     }
-    return __real_open(path, flags, mode);
+    return real_open_fn(path, flags, mode);
+}
+
+int
+__wrap_open(const char *path, int flags, ...)
+{
+    va_list ap;
+    va_start(ap, flags);
+    int rc = nsgai_test_forward_open(__real_open, path, flags, ap);
+    va_end(ap);
+    return rc;
 }
 
 extern int
@@ -197,6 +208,31 @@ __wrap_fcntl(int fd, int cmd, ...)
         return -1;
     }
     return __real_fcntl(fd, cmd, arg);
+}
+
+extern int
+__real_open64(const char *, int, ...);
+int
+__wrap_open64(const char *path, int flags, ...)
+{
+    va_list ap;
+    va_start(ap, flags);
+    int rc = nsgai_test_forward_open(__real_open64, path, flags, ap);
+    va_end(ap);
+    return rc;
+}
+
+extern int
+__real___open_2(const char *, int);
+int
+__wrap___open_2(const char *path, int flags)
+{
+    if (g_mock.armed_open_path && strcmp(path, g_mock.armed_open_path) == 0) {
+        g_mock.armed_open_path = NULL;
+        errno                  = g_mock.open_errno;
+        return -1;
+    }
+    return __real___open_2(path, flags);
 }
 
 extern void *
@@ -271,6 +307,7 @@ __wrap_ares_getaddrinfo(ares_channel_t *channel,
     __real_ares_getaddrinfo(channel, name, service, hints, callback, arg);
 }
 
+#ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
 extern ares_status_t
 __real_ares_set_socket_functions_ex(ares_channel_t *channel,
     const struct ares_socket_functions_ex *socket_functions,
@@ -287,6 +324,7 @@ __wrap_ares_set_socket_functions_ex(ares_channel_t *channel,
     return __real_ares_set_socket_functions_ex(
         channel, socket_functions, user_data);
 }
+#endif   // ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
 
 extern int
 __real_pthread_mutex_lock(pthread_mutex_t *);
@@ -1193,14 +1231,16 @@ t_public_input_validation(void **state)
     (void)state;
     struct addrinfo *res = NULL;
     /* NULL ns name falls back to implicit (current namespace) resolution. */
-    assert_int_equal(nsgai_getaddrinfo_ns(NULL, "h", NULL, NULL, &res), 0);
+    assert_int_equal(
+        nsgai_getaddrinfo_ns(NULL, "localhost", NULL, NULL, &res), 0);
     nsgai_freeaddrinfo(res);
     res = NULL;
     /* Bad ns name -> EAI_SYSTEM. */
     assert_int_equal(
-        nsgai_getaddrinfo_ns("a/b", "h", NULL, NULL, &res), EAI_SYSTEM);
+        nsgai_getaddrinfo_ns("a/b", "localhost", NULL, NULL, &res), EAI_SYSTEM);
     /* Negative fd falls back to implicit resolution. */
-    assert_int_equal(nsgai_getaddrinfo_nsfd(-1, "h", NULL, NULL, &res), 0);
+    assert_int_equal(
+        nsgai_getaddrinfo_nsfd(-1, "localhost", NULL, NULL, &res), 0);
     nsgai_freeaddrinfo(res);
     res = NULL;
 
