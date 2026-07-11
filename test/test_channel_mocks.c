@@ -1387,15 +1387,25 @@ t_addrinfo_helper_edges(void **state)
 
     g_mock.calloc_fail_nth   = 1;
     g_mock.calloc_call_count = 0;
-    assert_null(new_ai_node(AF_INET, SOCK_STREAM, IPPROTO_TCP,
+    res = (struct addrinfo *)new_ai_node(AF_INET, SOCK_STREAM, IPPROTO_TCP,
         &((struct in_addr){.s_addr = htonl(INADDR_LOOPBACK)}),
-        sizeof(struct in_addr), 0, NULL));
+        sizeof(struct in_addr), 0, NULL);
+    if (g_mock.calloc_call_count != 0) {
+        assert_null(res);
+    } else {
+        nsgai_freeaddrinfo(res);
+    }
 
     g_mock.calloc_fail_nth   = 2;
     g_mock.calloc_call_count = 0;
-    assert_null(new_ai_node(AF_INET, SOCK_STREAM, IPPROTO_TCP,
+    res = (struct addrinfo *)new_ai_node(AF_INET, SOCK_STREAM, IPPROTO_TCP,
         &((struct in_addr){.s_addr = htonl(INADDR_LOOPBACK)}),
-        sizeof(struct in_addr), 0, NULL));
+        sizeof(struct in_addr), 0, NULL);
+    if (g_mock.calloc_call_count != 0) {
+        assert_null(res);
+    } else {
+        nsgai_freeaddrinfo(res);
+    }
     g_mock.calloc_fail_nth = 0;
 
     unlink(hosts_templ);
@@ -1494,11 +1504,13 @@ t_channel_build_paths_and_socket_fn_failure(void **state)
     assert_true(ch->hosts_valid);
     nsgai_channel_destroy(ch);
 
+#ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
     g_mock.armed_ares_set_socket_functions_ex  = 1;
     g_mock.ares_set_socket_functions_ex_status = ARES_EFORMERR;
     ch                                         = NULL;
     assert_int_equal(nsgai_channel_create_uncached(&ns, &ch), ARES_EFORMERR);
     assert_null(ch);
+#endif   // ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
 
     unlink(resolv_templ);
     unlink(hosts_templ);

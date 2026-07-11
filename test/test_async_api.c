@@ -119,7 +119,7 @@ wait_for_completion(const struct gaicb *const *list, int ent, struct gaicb *req)
     int rc;
     int spins = 0;
 
-    timeout.tv_sec  = 1;
+    timeout.tv_sec  = 5;
     timeout.tv_nsec = 0;
     do {
         rc = nsgai_suspend(list, ent, &timeout);
