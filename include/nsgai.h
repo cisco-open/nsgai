@@ -190,6 +190,18 @@ nsgai_freeaddrinfo(struct addrinfo *res);
 const char *
 nsgai_gai_strerror(int errcode);
 
+/**
+ * @brief Release process-global resources retained by libnsgai.
+ *
+ * Synchronous lookups may keep idle c-ares channels cached for reuse. Calling
+ * this function destroys those idle channels immediately. It is also invoked
+ * automatically when libnsgai is unloaded or the process exits.
+ *
+ * Call this only when no other thread is concurrently using libnsgai.
+ */
+void
+nsgai_cleanup(void);
+
 /** @} */
 
 /** @addtogroup nsgai_explicit_name

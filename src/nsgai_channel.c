@@ -54,6 +54,12 @@ typedef struct {
     int netns_fd; /* -1 means "no setns required" */
 } sockctx_t;
 
+typedef struct {
+    ares_socket_t fd;
+    int readable;
+    int writable;
+} nsgai_sock_state_t;
+
 /**
  * @brief Cached and refcounted c-ares channel entry.
  *
@@ -71,6 +77,8 @@ struct nsgai_channel {
     int netns_fd; /* dup'd from ns->netns_fd, or -1 (implicit) */
     ares_channel_t *channel;
     sockctx_t sockctx; /* address handed to c-ares as user_data */
+    pthread_mutex_t sock_state_lock;
+    nsgai_sock_state_t sock_state[NSGAI_MAX_CHANNEL_SOCKETS];
 
     /* Freshness re-validation of resolv.conf / hosts. */
     struct stat resolv_st;
@@ -297,6 +305,46 @@ cb_aif_indextoname(
 
 /** @} */
 
+static void
+sock_state_cb(void *data, ares_socket_t socket_fd, int readable, int writable)
+{
+    nsgai_channel_t *ch = (nsgai_channel_t *)data;
+    int empty           = -1;
+
+    if (!ch || socket_fd == ARES_SOCKET_BAD) {
+        return;
+    }
+
+    nsgai_pthread_mutex_lock_or_abort(
+        &ch->sock_state_lock, "pthread_mutex_lock(sock_state)");
+    for (size_t i = 0; i < sizeof(ch->sock_state) / sizeof(ch->sock_state[0]);
+        i++) {
+        if (ch->sock_state[i].fd == socket_fd) {
+            if (!readable && !writable) {
+                ch->sock_state[i].fd       = ARES_SOCKET_BAD;
+                ch->sock_state[i].readable = 0;
+                ch->sock_state[i].writable = 0;
+            } else {
+                ch->sock_state[i].readable = readable;
+                ch->sock_state[i].writable = writable;
+            }
+            nsgai_pthread_mutex_unlock_or_abort(
+                &ch->sock_state_lock, "pthread_mutex_unlock(sock_state)");
+            return;
+        }
+        if (empty < 0 && ch->sock_state[i].fd == ARES_SOCKET_BAD) {
+            empty = (int)i;
+        }
+    }
+    if ((readable || writable) && empty >= 0) {
+        ch->sock_state[empty].fd       = socket_fd;
+        ch->sock_state[empty].readable = readable;
+        ch->sock_state[empty].writable = writable;
+    }
+    nsgai_pthread_mutex_unlock_or_abort(
+        &ch->sock_state_lock, "pthread_mutex_unlock(sock_state)");
+}
+
 /**
  * @brief Socket callback vtable provided to c-ares channels.
  */
@@ -424,6 +472,8 @@ entry_free(nsgai_channel_t *e)
     if (e->netns_fd >= 0) {
         close(e->netns_fd);
     }
+    nsgai_pthread_mutex_destroy_checked(
+        &e->sock_state_lock, "pthread_mutex_destroy(sock_state)");
     free(e->resolvconf_path);
     free(e->hosts_path);
     free(e);
@@ -483,11 +533,20 @@ channel_build_common(const nsgai_ns_t *ns,
     e->key_has_fd = (ns && ns->netns_fd >= 0);
     e->netns_fd   = -1;
     e->cacheable  = cacheable;
+    if (nsgai_pthread_mutex_init_checked(
+            &e->sock_state_lock, "pthread_mutex_init(sock_state)") != 0) {
+        free(e);
+        return ARES_ENOMEM;
+    }
+    for (size_t i = 0; i < sizeof(e->sock_state) / sizeof(e->sock_state[0]);
+        i++) {
+        e->sock_state[i].fd = ARES_SOCKET_BAD;
+    }
 
     if (ns && ns->netns_fd >= 0) {
         e->netns_fd = fcntl(ns->netns_fd, F_DUPFD_CLOEXEC, 0);
         if (e->netns_fd < 0) {
-            free(e);
+            entry_free(e);
             return ARES_ENOMEM;
         }
     }
@@ -517,11 +576,9 @@ channel_build_common(const nsgai_ns_t *ns,
     struct ares_options opts;
     int optmask = 0;
     memset(&opts, 0, sizeof(opts));
-#ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
-    /* c-ares >= 1.34: ex socket callbacks coexist with event-thread mode. */
-    opts.evsys = ARES_EVSYS_DEFAULT;
-    optmask |= ARES_OPT_EVENT_THREAD;
-#endif   // ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
+    opts.sock_state_cb      = sock_state_cb;
+    opts.sock_state_cb_data = e;
+    optmask |= ARES_OPT_SOCK_STATE_CB;
     if (e->resolvconf_path) {
         opts.resolvconf_path = e->resolvconf_path;
         optmask |= ARES_OPT_RESOLVCONF;
@@ -710,8 +767,105 @@ nsgai_channel_destroy(nsgai_channel_t *ch)
     }
 }
 
+void
+nsgai_channel_cache_cleanup(void)
+{
+    nsgai_channel_t *to_free = NULL;
+
+    nsgai_pthread_mutex_lock_or_abort(
+        &g_cache_lock, "pthread_mutex_lock(g_cache_lock)");
+    for (nsgai_channel_t *e = g_cache_head; e != NULL;) {
+        nsgai_channel_t *next = e->next;
+        e->stale              = true;
+        if (e->refcount == 0) {
+            cache_unlink(e);
+            e->next = to_free;
+            to_free = e;
+        }
+        e = next;
+    }
+    g_cache_idle = 0;
+    nsgai_pthread_mutex_unlock_or_abort(
+        &g_cache_lock, "pthread_mutex_unlock(g_cache_lock)");
+
+    while (to_free != NULL) {
+        nsgai_channel_t *next = to_free->next;
+        to_free->next         = NULL;
+        entry_free(to_free);
+        to_free = next;
+    }
+}
+
 ares_channel_t *
 nsgai_channel_ares(nsgai_channel_t *ch)
 {
     return ch ? ch->channel : NULL;
+}
+
+nfds_t
+nsgai_channel_pollfds(nsgai_channel_t *ch, struct pollfd *pfds, nfds_t maxfds)
+{
+    nfds_t nfds = 0;
+    if (!ch || !pfds || maxfds == 0) {
+        return 0;
+    }
+
+    nsgai_pthread_mutex_lock_or_abort(
+        &ch->sock_state_lock, "pthread_mutex_lock(sock_state)");
+    for (size_t i = 0; i < sizeof(ch->sock_state) / sizeof(ch->sock_state[0]);
+        i++) {
+        if (ch->sock_state[i].fd == ARES_SOCKET_BAD) {
+            continue;
+        }
+        short events = 0;
+        if (ch->sock_state[i].readable) {
+            events |= POLLIN;
+        }
+        if (ch->sock_state[i].writable) {
+            events |= POLLOUT;
+        }
+        if (events == 0) {
+            continue;
+        }
+        pfds[nfds].fd      = (int)ch->sock_state[i].fd;
+        pfds[nfds].events  = events;
+        pfds[nfds].revents = 0;
+        nfds++;
+        if (nfds == maxfds) {
+            break;
+        }
+    }
+    nsgai_pthread_mutex_unlock_or_abort(
+        &ch->sock_state_lock, "pthread_mutex_unlock(sock_state)");
+    return nfds;
+}
+
+void
+nsgai_channel_process_pollfds(
+    nsgai_channel_t *ch, const struct pollfd *pfds, nfds_t nfds)
+{
+    if (!ch) {
+        return;
+    }
+    if (!pfds || nfds == 0) {
+        ares_process_fd(ch->channel, ARES_SOCKET_BAD, ARES_SOCKET_BAD);
+        return;
+    }
+    for (nfds_t i = 0; i < nfds; i++) {
+        const short revents = pfds[i].revents;
+        if (!revents) {
+            continue;
+        }
+        ares_socket_t rfd = ARES_SOCKET_BAD;
+        ares_socket_t wfd = ARES_SOCKET_BAD;
+        if (revents & (POLLIN | POLLERR | POLLHUP | POLLNVAL)) {
+            rfd = (ares_socket_t)pfds[i].fd;
+        }
+        if (revents & (POLLOUT | POLLERR | POLLHUP | POLLNVAL)) {
+            wfd = (ares_socket_t)pfds[i].fd;
+        }
+        if (rfd != ARES_SOCKET_BAD || wfd != ARES_SOCKET_BAD) {
+            ares_process_fd(ch->channel, rfd, wfd);
+        }
+    }
 }

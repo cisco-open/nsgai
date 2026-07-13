@@ -158,19 +158,6 @@ nsgai_async_request_free(nsgai_async_req_t *req)
     free(req);
 }
 
-#ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
-static int
-nsgai_async_has_done_locked(void)
-{
-    for (nsgai_async_req_t *req = g_async_head; req != NULL; req = req->next) {
-        if (req->done) {
-            return 1;
-        }
-    }
-    return 0;
-}
-#endif   // ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
-
 static void
 nsgai_async_complete_locked(
     nsgai_async_req_t *req, int status, struct addrinfo *result)
@@ -331,16 +318,11 @@ nsgai_async_worker_main(void *arg)
     (void)arg;
 
     for (;;) {
-#ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
-        nsgai_pthread_mutex_lock_or_abort(
-            &g_async_mu, "pthread_mutex_lock(async)");
-        while (g_async_head == NULL || !nsgai_async_has_done_locked()) {
-            nsgai_pthread_cond_wait_or_abort(
-                &g_async_cv, &g_async_mu, "pthread_cond_wait(async)");
-        }
-#else
-        struct pollfd pfds[ARES_GETSOCK_MAXNUM * 32];
+        struct pollfd pfds[NSGAI_MAX_CHANNEL_SOCKETS * 32];
         ares_channel_t *channels[32];
+        nsgai_channel_t *channel_handles[32];
+        nfds_t channel_pfd_start[32];
+        nfds_t channel_pfd_count[32];
         nfds_t channel_count = 0;
         nfds_t nfds          = 0;
         int timeout_ms       = -1;
@@ -359,80 +341,61 @@ nsgai_async_worker_main(void *arg)
             }
             if (channel_count < (sizeof(channels) / sizeof(channels[0]))) {
                 channels[channel_count++] = nsgai_channel_ares(req->channel);
+                channel_handles[channel_count - 1] = req->channel;
             }
         }
         nsgai_pthread_mutex_unlock_or_abort(
             &g_async_mu, "pthread_mutex_unlock(async)");
 
-        for (nfds_t c = 0; c < channel_count; ++c) {
-            ares_socket_t socks[ARES_GETSOCK_MAXNUM];
-            int bitmask = ares_getsock(channels[c], socks, ARES_GETSOCK_MAXNUM);
-            struct timeval tv;
-            struct timeval *tvp = ares_timeout(channels[c], NULL, &tv);
+        if (channel_count > 0) {
+            for (nfds_t c = 0; c < channel_count; ++c) {
+                channel_pfd_start[c] = nfds;
+                channel_pfd_count[c] = nsgai_channel_pollfds(channel_handles[c],
+                    pfds + nfds, (sizeof(pfds) / sizeof(pfds[0])) - nfds);
+                nfds += channel_pfd_count[c];
 
-            if (tvp != NULL) {
-                int ms = (int)((long long)tvp->tv_sec * 1000 +
-                               ((long long)tvp->tv_usec + 999) / 1000);
-                if (timeout_ms < 0 || ms < timeout_ms) {
-                    timeout_ms = ms;
+                struct timeval tv;
+                struct timeval *tvp = ares_timeout(channels[c], NULL, &tv);
+
+                if (tvp != NULL) {
+                    int ms = (int)((long long)tvp->tv_sec * 1000 +
+                                   ((long long)tvp->tv_usec + 999) / 1000);
+                    if (timeout_ms < 0 || ms < timeout_ms) {
+                        timeout_ms = ms;
+                    }
                 }
             }
 
-            for (int i = 0; i < ARES_GETSOCK_MAXNUM; ++i) {
-                short events = 0;
-                if (socks[i] == ARES_SOCKET_BAD) {
-                    continue;
+            if (nfds == 0 && timeout_ms < 0) {
+                for (nfds_t c = 0; c < channel_count; ++c) {
+                    nsgai_channel_process_pollfds(channel_handles[c], NULL, 0);
                 }
-                if (ARES_GETSOCK_READABLE(bitmask, i)) {
-                    events |= POLLIN;
-                }
-                if (ARES_GETSOCK_WRITABLE(bitmask, i)) {
-                    events |= POLLOUT;
-                }
-                if (events == 0) {
-                    continue;
-                }
-                if (nfds < (sizeof(pfds) / sizeof(pfds[0]))) {
-                    pfds[nfds].fd      = (int)socks[i];
-                    pfds[nfds].events  = events;
-                    pfds[nfds].revents = 0;
-                    ++nfds;
-                }
-            }
-        }
-
-        if (poll(pfds, nfds, timeout_ms) < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-        }
-
-        for (nfds_t c = 0; c < channel_count; ++c) {
-            ares_socket_t socks[ARES_GETSOCK_MAXNUM];
-            int bitmask = ares_getsock(channels[c], socks, ARES_GETSOCK_MAXNUM);
-
-            for (int i = 0; i < ARES_GETSOCK_MAXNUM; ++i) {
-                ares_socket_t rfd = ARES_SOCKET_BAD;
-                ares_socket_t wfd = ARES_SOCKET_BAD;
-
-                if (socks[i] == ARES_SOCKET_BAD) {
-                    continue;
-                }
-                if (ARES_GETSOCK_READABLE(bitmask, i)) {
-                    rfd = socks[i];
-                }
-                if (ARES_GETSOCK_WRITABLE(bitmask, i)) {
-                    wfd = socks[i];
-                }
-                if (rfd != ARES_SOCKET_BAD || wfd != ARES_SOCKET_BAD) {
-                    ares_process_fd(channels[c], rfd, wfd);
+            } else {
+                int poll_rc = poll(nfds ? pfds : NULL, nfds, timeout_ms);
+                if (poll_rc < 0) {
+                    if (errno == EINTR) {
+                        continue;
+                    }
+                    for (nfds_t c = 0; c < channel_count; ++c) {
+                        nsgai_channel_process_pollfds(
+                            channel_handles[c], NULL, 0);
+                    }
+                } else if (poll_rc == 0) {
+                    for (nfds_t c = 0; c < channel_count; ++c) {
+                        nsgai_channel_process_pollfds(
+                            channel_handles[c], NULL, 0);
+                    }
+                } else {
+                    for (nfds_t c = 0; c < channel_count; ++c) {
+                        nsgai_channel_process_pollfds(channel_handles[c],
+                            pfds + channel_pfd_start[c], channel_pfd_count[c]);
+                    }
                 }
             }
         }
 
         nsgai_pthread_mutex_lock_or_abort(
             &g_async_mu, "pthread_mutex_lock(async)");
-#endif
         nsgai_async_req_t *cur = g_async_head;
         while (cur != NULL) {
             nsgai_async_req_t *next = cur->next;

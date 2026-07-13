@@ -6,7 +6,7 @@
 
 cmake_minimum_required(VERSION 3.16)
 project(nsgai
-        VERSION 0.1.0
+        VERSION 0.2.0
         DESCRIPTION "Network-namespace-aware getaddrinfo replacement using c-ares"
         LANGUAGES C)
 
@@ -112,6 +112,7 @@ add_library(nsgai_core OBJECT
     src/nsgai_channel.c
     src/nsgai_addrinfo.c
     src/nsgai_async.c
+    src/nsgai_cleanup.c
 )
 target_include_directories(nsgai_core
     PUBLIC  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -200,6 +201,10 @@ if(NSGAI_BUILD_TESTS)
         test/test_rsyslog_null_node_regression.c)
     target_link_libraries(test_rsyslog_null_node_regression PRIVATE nsgai)
 
+    add_executable(test_teardown_dlopen test/test_teardown_dlopen.c)
+    target_include_directories(test_teardown_dlopen PRIVATE include)
+    target_link_libraries(test_teardown_dlopen PRIVATE ${CMAKE_DL_LIBS})
+
     add_executable(test_async_api
         test/test_async_api.c
         $<TARGET_OBJECTS:nsgai_core>)
@@ -236,6 +241,8 @@ if(NSGAI_BUILD_TESTS)
     target_link_libraries(test_channel_failures PRIVATE ${CARES_TARGET} pthread)
     target_link_options(test_channel_failures PRIVATE
         "LINKER:--wrap=ares_init_options"
+        "LINKER:--wrap=ares_getaddrinfo"
+        "LINKER:--wrap=ares_destroy"
         "LINKER:--wrap=fcntl"
     )
 
@@ -315,6 +322,8 @@ if(NSGAI_BUILD_TESTS)
     add_test(NAME nsgai_api_coverage COMMAND test_api_coverage)
     add_test(NAME nsgai_rsyslog_null_node_regression
              COMMAND test_rsyslog_null_node_regression)
+    add_test(NAME nsgai_teardown_dlopen
+             COMMAND test_teardown_dlopen $<TARGET_FILE:nsgai>)
     add_test(NAME nsgai_async_api COMMAND test_async_api)
     add_test(NAME nsgai_api_coverage_preload COMMAND test_api_coverage)
     set_tests_properties(nsgai_api_coverage_preload PROPERTIES
@@ -356,6 +365,9 @@ if(NSGAI_BUILD_TESTS)
                  COMMAND ${_vg} $<TARGET_FILE:test_api_coverage>)
         add_test(NAME nsgai_rsyslog_null_node_regression_valgrind
                  COMMAND ${_vg} $<TARGET_FILE:test_rsyslog_null_node_regression>)
+        add_test(NAME nsgai_teardown_dlopen_valgrind
+                 COMMAND ${_vg} $<TARGET_FILE:test_teardown_dlopen>
+                         $<TARGET_FILE:nsgai>)
         add_test(NAME nsgai_async_api_valgrind
                  COMMAND ${_vg} $<TARGET_FILE:test_async_api>)
         if(NSGAI_BUILD_EXAMPLES)

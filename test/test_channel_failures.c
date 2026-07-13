@@ -49,7 +49,12 @@ static struct {
     int armed_fcntl_dup_nth;
     int fcntl_dup_count;
 
-    /* setsockopt for ares set socket functions: not used here. */
+    /* ares_getaddrinfo(): optionally complete immediately without DNS I/O. */
+    int armed_ares_getaddrinfo_immediate;
+    int saw_ares_getaddrinfo;
+
+    /* ares_destroy(): count channel destruction. */
+    int ares_destroy_count;
 } g;
 
 static void
@@ -74,6 +79,39 @@ __wrap_ares_init_options(
         return st;
     }
     return __real_ares_init_options(c, o, m);
+}
+
+extern void
+__real_ares_getaddrinfo(ares_channel_t *,
+    const char *,
+    const char *,
+    const struct ares_addrinfo_hints *,
+    ares_addrinfo_callback,
+    void *);
+void
+__wrap_ares_getaddrinfo(ares_channel_t *channel,
+    const char *name,
+    const char *service,
+    const struct ares_addrinfo_hints *hints,
+    ares_addrinfo_callback cb,
+    void *arg)
+{
+    g.saw_ares_getaddrinfo = 1;
+    if (g.armed_ares_getaddrinfo_immediate) {
+        g.armed_ares_getaddrinfo_immediate = 0;
+        cb(arg, ARES_ENOTFOUND, 0, NULL);
+        return;
+    }
+    __real_ares_getaddrinfo(channel, name, service, hints, cb, arg);
+}
+
+extern void
+__real_ares_destroy(ares_channel_t *);
+void
+__wrap_ares_destroy(ares_channel_t *channel)
+{
+    g.ares_destroy_count++;
+    __real_ares_destroy(channel);
 }
 
 extern int
@@ -239,6 +277,27 @@ test_getnameinfo_overflow_serv(void)
     return 0;
 }
 
+static int
+test_cleanup_destroys_idle_cached_channel(void)
+{
+    nsgai_cleanup();
+    reset();
+    CHECK(nsgai_set_lookup_policy(NSGAI_LOOKUP_DNS_ONLY) == 0);
+    g.armed_ares_getaddrinfo_immediate = 1;
+
+    struct addrinfo *r = NULL;
+    int rc             = nsgai_getaddrinfo("teardown.invalid", NULL, NULL, &r);
+    CHECK(rc != 0);
+    CHECK(r == NULL);
+    CHECK(g.saw_ares_getaddrinfo);
+    CHECK(g.ares_destroy_count == 0);
+
+    nsgai_cleanup();
+    CHECK(g.ares_destroy_count > 0);
+    CHECK(nsgai_set_lookup_policy(NSGAI_LOOKUP_HOSTS_FIRST) == 0);
+    return 0;
+}
+
 int
 main(void)
 {
@@ -264,6 +323,9 @@ main(void)
         return 1;
     }
     if (test_getnameinfo_overflow_serv()) {
+        return 1;
+    }
+    if (test_cleanup_destroys_idle_cached_channel()) {
         return 1;
     }
     printf("channel failure-injection tests passed\n");

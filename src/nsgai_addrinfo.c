@@ -964,18 +964,8 @@ ni_callback(
 }
 
 static void
-sync_wait(sync_t *s, ares_channel_t *channel)
+sync_wait(sync_t *s, nsgai_channel_t *ch)
 {
-#ifdef NSGAI_HAVE_CARES_SOCKFUNCS_EX
-    (void)channel;
-    nsgai_pthread_mutex_lock_or_abort(&s->mu, "pthread_mutex_lock(sync.mu)");
-    while (!s->done) {
-        nsgai_pthread_cond_wait_or_abort(
-            &s->cv, &s->mu, "pthread_cond_wait(sync.cv)");
-    }
-    nsgai_pthread_mutex_unlock_or_abort(
-        &s->mu, "pthread_mutex_unlock(sync.mu)");
-#else    // ndef NSGAI_HAVE_CARES_SOCKFUNCS_EX
     for (;;) {
         nsgai_pthread_mutex_lock_or_abort(
             &s->mu, "pthread_mutex_lock(sync.mu)");
@@ -986,35 +976,12 @@ sync_wait(sync_t *s, ares_channel_t *channel)
             break;
         }
 
-        ares_socket_t socks[ARES_GETSOCK_MAXNUM];
-        int bitmask = ares_getsock(channel, socks, ARES_GETSOCK_MAXNUM);
-
-        struct pollfd pfds[ARES_GETSOCK_MAXNUM];
-        int sock_index[ARES_GETSOCK_MAXNUM];
-        nfds_t nfds = 0;
-        for (int i = 0; i < ARES_GETSOCK_MAXNUM; i++) {
-            if (socks[i] == ARES_SOCKET_BAD) {
-                continue;
-            }
-            short events = 0;
-            if (ARES_GETSOCK_READABLE(bitmask, i)) {
-                events |= POLLIN;
-            }
-            if (ARES_GETSOCK_WRITABLE(bitmask, i)) {
-                events |= POLLOUT;
-            }
-            if (!events) {
-                continue;
-            }
-            pfds[nfds].fd      = (int)socks[i];
-            pfds[nfds].events  = events;
-            pfds[nfds].revents = 0;
-            sock_index[nfds]   = i;
-            nfds++;
-        }
+        struct pollfd pfds[NSGAI_MAX_CHANNEL_SOCKETS];
+        nfds_t nfds =
+            nsgai_channel_pollfds(ch, pfds, NSGAI_MAX_CHANNEL_SOCKETS);
 
         struct timeval tv;
-        struct timeval *tvp = ares_timeout(channel, NULL, &tv);
+        struct timeval *tvp = ares_timeout(nsgai_channel_ares(ch), NULL, &tv);
         int timeout_ms      = -1;
         if (tvp) {
             long long ms = (long long)tvp->tv_sec * 1000 +
@@ -1028,6 +995,11 @@ sync_wait(sync_t *s, ares_channel_t *channel)
             timeout_ms = (int)ms;
         }
 
+        if (nfds == 0 && timeout_ms < 0) {
+            nsgai_channel_process_pollfds(ch, NULL, 0);
+            continue;
+        }
+
         int poll_rc = poll(nfds ? pfds : NULL, nfds, timeout_ms);
 
         if (poll_rc < 0) {
@@ -1036,37 +1008,17 @@ sync_wait(sync_t *s, ares_channel_t *channel)
             }
             /* Let c-ares progress timeout/error handling on transient wait
              * failures rather than aborting the whole lookup immediately. */
-            ares_process_fd(channel, ARES_SOCKET_BAD, ARES_SOCKET_BAD);
+            nsgai_channel_process_pollfds(ch, NULL, 0);
             continue;
         }
 
         if (poll_rc == 0) {
-            ares_process_fd(channel, ARES_SOCKET_BAD, ARES_SOCKET_BAD);
+            nsgai_channel_process_pollfds(ch, NULL, 0);
             continue;
         }
 
-        for (nfds_t j = 0; j < nfds; j++) {
-            short revents = pfds[j].revents;
-            if (!revents) {
-                continue;
-            }
-            int i             = sock_index[j];
-            ares_socket_t rfd = ARES_SOCKET_BAD;
-            ares_socket_t wfd = ARES_SOCKET_BAD;
-            if (ARES_GETSOCK_READABLE(bitmask, i) &&
-                (revents & (POLLIN | POLLERR | POLLHUP | POLLNVAL))) {
-                rfd = socks[i];
-            }
-            if (ARES_GETSOCK_WRITABLE(bitmask, i) &&
-                (revents & (POLLOUT | POLLERR | POLLHUP | POLLNVAL))) {
-                wfd = socks[i];
-            }
-            if (rfd != ARES_SOCKET_BAD || wfd != ARES_SOCKET_BAD) {
-                ares_process_fd(channel, rfd, wfd);
-            }
-        }
+        nsgai_channel_process_pollfds(ch, pfds, nfds);
     }
-#endif   // ndef NSGAI_HAVE_CARES_SOCKFUNCS_EX
 }
 
 /**
@@ -1116,7 +1068,7 @@ do_dns_getaddrinfo(const nsgai_ns_t *ns,
 
     ares_getaddrinfo(
         nsgai_channel_ares(ch), node, service, &ah, ai_callback, &s);
-    sync_wait(&s, nsgai_channel_ares(ch));
+    sync_wait(&s, ch);
 
     int eai = 0;
     if (s.status != ARES_SUCCESS) {
@@ -1283,7 +1235,7 @@ do_dns_getnameinfo(const nsgai_ns_t *ns,
 
     ares_getnameinfo(nsgai_channel_ares(ch), sa, salen, ares_flags,
         (ares_nameinfo_callback)ni_callback, &s);
-    sync_wait(&s, nsgai_channel_ares(ch));
+    sync_wait(&s, ch);
 
     int eai = 0;
     if (s.status != ARES_SUCCESS) {

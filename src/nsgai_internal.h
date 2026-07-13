@@ -14,6 +14,7 @@
 #include <ares.h>
 #include <ares_version.h>
 #include <pthread.h>
+#include <poll.h>
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -28,6 +29,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif   // ifdef __cplusplus
+
+#define NSGAI_MAX_CHANNEL_SOCKETS 64
 
 /**
  * @brief Resolved namespace selection consumed by core resolution paths.
@@ -120,6 +123,17 @@ void
 nsgai_channel_destroy(nsgai_channel_t *ch);
 
 /**
+ * @brief Destroy all idle cached resolver channels.
+ *
+ * This is called during library teardown so c-ares event threads owned by
+ * cached synchronous channels stop before libnsgai's callback code unloads.
+ * Channels that are still referenced are marked stale and destroyed by their
+ * final nsgai_channel_destroy().
+ */
+void
+nsgai_channel_cache_cleanup(void);
+
+/**
  * @brief Access underlying c-ares channel pointer.
  *
  * @param ch Channel handle.
@@ -127,6 +141,28 @@ nsgai_channel_destroy(nsgai_channel_t *ch);
  */
 ares_channel_t *
 nsgai_channel_ares(nsgai_channel_t *ch);
+
+/**
+ * @brief Snapshot active channel sockets as pollfd entries.
+ *
+ * @param ch Channel handle.
+ * @param pfds Caller-provided pollfd array.
+ * @param maxfds Number of entries in @p pfds.
+ * @return Number of populated pollfd entries.
+ */
+nfds_t
+nsgai_channel_pollfds(nsgai_channel_t *ch, struct pollfd *pfds, nfds_t maxfds);
+
+/**
+ * @brief Feed poll results back into c-ares for a channel.
+ *
+ * @param ch Channel handle.
+ * @param pfds pollfd array previously populated by nsgai_channel_pollfds().
+ * @param nfds Number of entries in @p pfds.
+ */
+void
+nsgai_channel_process_pollfds(
+    nsgai_channel_t *ch, const struct pollfd *pfds, nfds_t nfds);
 
 /**
  * @brief Internal strerror helper for EAI_* values.
