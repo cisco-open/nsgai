@@ -7,6 +7,18 @@
  * Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
  * All rights reserved.
  *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
  * nsgai - network-namespace-aware getaddrinfo replacement built on c-ares.
  *
  * Design (post v0.2 simplification):
@@ -84,7 +96,11 @@ extern "C" {
 /** @brief Minor version of the nsgai public API. */
 #define NSGAI_VERSION_MINOR 2
 /** @brief Patch version of the nsgai public API. */
-#define NSGAI_VERSION_PATCH 0
+#define NSGAI_VERSION_PATCH 1
+/** @brief Suffix for unreleased development builds. */
+#define NSGAI_VERSION_SUFFIX "-dev"
+/** @brief Full version string for the current build tree. */
+#define NSGAI_VERSION_STRING "0.2.1-dev"
 
 /**
  * @brief Host/DNS lookup ordering policy for namespace-aware resolution.

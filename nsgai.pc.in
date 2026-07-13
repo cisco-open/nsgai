@@ -5,7 +5,7 @@ includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
 
 Name: nsgai
 Description: Network-namespace-aware getaddrinfo replacement
-Version: @PROJECT_VERSION@
+Version: @NSGAI_PROJECT_VERSION_DISPLAY@
 Libs: -L${libdir} -lnsgai
 Cflags: -I${includedir}
 Requires.private: libcares

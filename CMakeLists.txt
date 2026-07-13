@@ -2,13 +2,27 @@
 #
 # Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
 # All rights reserved.
-# All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 cmake_minimum_required(VERSION 3.16)
 project(nsgai
-        VERSION 0.2.0
+        VERSION 0.2.1
         DESCRIPTION "Network-namespace-aware getaddrinfo replacement using c-ares"
         LANGUAGES C)
+
+set(NSGAI_VERSION_SUFFIX "-dev")
+set(NSGAI_PROJECT_VERSION_DISPLAY "${PROJECT_VERSION}${NSGAI_VERSION_SUFFIX}")
 
 option(NSGAI_BUILD_TESTS "Build test programs" ON)
 option(NSGAI_BUILD_PRELOAD "Build LD_PRELOAD shim" ON)
