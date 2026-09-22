@@ -1,0 +1,20 @@
+README.md
+  s_7b9548a76de3e6::t_ea3ee7c973b573 34-35
+  s_7b9548a76de3e6::t_6e53a03525af91 31-33,358-362
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5d0bd6b912da0669c4e70dcc4da0e53ecbb829b6",
+  "prompts": {},
+  "sessions": {
+    "s_7b9548a76de3e6": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "3e1891f9-aa38-44bf-ad64-7bb1a8dd3690",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
