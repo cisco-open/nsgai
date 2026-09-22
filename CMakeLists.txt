@@ -24,6 +24,26 @@ project(nsgai
 set(NSGAI_VERSION_SUFFIX "-dev")
 set(NSGAI_PROJECT_VERSION_DISPLAY "${PROJECT_VERSION}${NSGAI_VERSION_SUFFIX}")
 
+# ----- source SBOM -------------------------------------------------------
+# The source tree contains the template; CMake writes release-specific
+# metadata to the build tree so it can be attached to a release separately.
+set(NSGAI_SPDX_NAMESPACE_BASE
+    "https://wwwin-github.cisco.com/xr-oe/nsgai/spdx"
+    CACHE STRING "Base URL for generated SPDX document namespaces")
+set(NSGAI_SPDX_SOURCE_DOWNLOAD_LOCATION "NOASSERTION" CACHE STRING
+    "Source archive URL recorded in the generated SPDX document")
+if(NOT DEFINED NSGAI_SPDX_CREATED)
+    string(TIMESTAMP _nsgai_spdx_created "%Y-%m-%dT%H:%M:%SZ" UTC)
+    set(NSGAI_SPDX_CREATED "${_nsgai_spdx_created}" CACHE STRING
+        "SPDX creation time in UTC; set explicitly for reproducible release builds")
+endif()
+set(NSGAI_SPDX_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/sbom")
+set(NSGAI_SPDX_OUTPUT
+    "${NSGAI_SPDX_OUTPUT_DIR}/nsgai-${PROJECT_VERSION}-source.spdx.json")
+file(MAKE_DIRECTORY "${NSGAI_SPDX_OUTPUT_DIR}")
+configure_file(sbom/nsgai-source.spdx.json.in "${NSGAI_SPDX_OUTPUT}" @ONLY)
+add_custom_target(source-sbom DEPENDS "${NSGAI_SPDX_OUTPUT}")
+
 option(NSGAI_BUILD_TESTS "Build test programs" ON)
 option(NSGAI_BUILD_PRELOAD "Build LD_PRELOAD shim" ON)
 option(NSGAI_BUILD_NSS "Build NSS module" ON)

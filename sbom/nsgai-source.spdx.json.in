@@ -1,0 +1,75 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "nsgai-@PROJECT_VERSION@-source",
+  "documentNamespace": "@NSGAI_SPDX_NAMESPACE_BASE@/nsgai-@PROJECT_VERSION@-source",
+  "creationInfo": {
+    "created": "@NSGAI_SPDX_CREATED@",
+    "creators": [
+      "Organization: Cisco Systems, Inc.",
+      "Tool: nsgai source SBOM manifest"
+    ],
+    "comment": "Package-level source SBOM. It describes declared source dependencies and does not describe a built or deployed artifact."
+  },
+  "documentDescribes": [
+    "SPDXRef-Package-nsgai"
+  ],
+  "packages": [
+    {
+      "name": "nsgai",
+      "SPDXID": "SPDXRef-Package-nsgai",
+      "versionInfo": "@PROJECT_VERSION@",
+      "supplier": "Organization: Cisco Systems, Inc.",
+      "downloadLocation": "@NSGAI_SPDX_SOURCE_DOWNLOAD_LOCATION@",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates. All rights reserved.",
+      "primaryPackagePurpose": "LIBRARY",
+      "description": "Network-namespace-aware getaddrinfo/getnameinfo replacement using c-ares.",
+      "comment": "This source release requires a compatible externally supplied c-ares library at build and runtime."
+    },
+    {
+      "name": "c-ares",
+      "SPDXID": "SPDXRef-Package-c-ares",
+      "versionInfo": ">= 1.27.0",
+      "downloadLocation": "https://github.com/c-ares/c-ares.git",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION",
+      "primaryPackagePurpose": "LIBRARY",
+      "comment": "Runtime and build dependency. This source release does not include c-ares; consumers select the resolved version."
+    },
+    {
+      "name": "cmocka",
+      "SPDXID": "SPDXRef-Package-cmocka",
+      "downloadLocation": "https://cmocka.org/",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "primaryPackagePurpose": "LIBRARY",
+      "comment": "Test-only dependency; it is required only when NSGAI_BUILD_TESTS is enabled and is not a runtime dependency of the installed libraries."
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-nsgai"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-nsgai",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-c-ares"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-nsgai",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-cmocka",
+      "comment": "Test scope only."
+    }
+  ]
+}
