@@ -28,9 +28,11 @@ moving the caller's thread to a different netns, and without rebuilding
 the resolver per request.
 
 The intended use case is processes that simultaneously serve endpoints
-in *different* netns (e.g. **rsyslogd** with per-input network
-namespaces, sidecars/proxies, tenant-aware daemons).  For single-ns
-applications, prefer `ip netns exec NAME …` — which already bind-mounts
+in *different* netns.  **rsyslogd** is the original motivating case,
+as it supports socket endpoints across multiple network namespaces.
+Other examples include sidecars, proxies, and tenant-aware daemons.
+For single-ns applications, prefer `ip netns exec NAME …` — which
+already bind-mounts
 `/etc/netns/NAME/resolv.conf` over `/etc/resolv.conf` — and stay on
 libc.
 
@@ -353,12 +355,11 @@ have already `setns`-ed their handler thread before calling.
 ## Multi-tenant integration (rsyslogd)
 
 This is the original motivating case.  rsyslogd allows endpoints in
-arbitrary network namespaces, but its address resolution does not
-follow the per-endpoint netns.  With nsgai, the rsyslogd input/output
-plugin opens an `nsfs` fd for the target netns once and calls
-`nsgai_getaddrinfo_nsfd(fd, …)` per resolution — no fork, no caller
-thread migration, no resolver rebuild, and arbitrarily many tenants
-in one process.
+multiple network namespaces, but its address resolution does not
+follow the endpoint's network namespace.  With nsgai, rsyslogd can
+resolve those endpoints without forking, moving the caller's thread,
+or rebuilding the resolver, while serving arbitrarily many tenants in
+one process.
 
 ## Limitations / future work
 
