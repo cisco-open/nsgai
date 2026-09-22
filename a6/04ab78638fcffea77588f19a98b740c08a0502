@@ -1,0 +1,75 @@
+scripts/run-container-tests.sh
+  s_a63aeac4fd3888::t_a651003628e155 22-24
+  s_a63aeac4fd3888::t_66ba7ac5b0ee43 138-139
+  s_a63aeac4fd3888::t_bcb0278fa4d93d 72,77-78,84,90-91,103-118
+  s_a63aeac4fd3888::t_f4651a2778ca3e 151,154,178,182,197
+  s_a63aeac4fd3888::t_26e6c035f2f6df 19-21,29-32,41-46,58,67-68,75-76,79-82,87-89,92-96,99-102,135-137,141-145,147-148,150,152-153,155-172,174-176,179-180,183-196,198-203
+  s_a63aeac4fd3888::t_fbce78ea1c0176 27,33-40,50,59-60
+docker/Dockerfile.ubuntu24.04
+  s_a63aeac4fd3888::t_bc26bd14a85b21 49
+  s_a63aeac4fd3888::t_cd1075b8a70651 36-48,50
+  s_a63aeac4fd3888::t_736f1425beca43 33-35
+  s_a63aeac4fd3888::t_0775add1778e05 51-53
+  s_a63aeac4fd3888::t_ca27c738078c33 1-32,54-84
+.github/workflows/ci.yml
+  s_a63aeac4fd3888::t_95960196ffa6b7 97-98,104
+  s_a63aeac4fd3888::t_8028203934d1dc 30-31,38-39,41-43
+  s_a63aeac4fd3888::t_02c5d12ae8c7cd 77-82
+docker/Dockerfile.debian12
+  s_a63aeac4fd3888::t_bc26bd14a85b21 49
+  s_a63aeac4fd3888::t_cd1075b8a70651 36-48,50
+  s_a63aeac4fd3888::t_5141d60aee3e20 33-35
+  s_a63aeac4fd3888::t_7cac5a850fc821 51-53
+  s_a63aeac4fd3888::t_7be3b9fc6924e7 1-32,54-84
+CMakeLists.txt
+  s_a63aeac4fd3888::t_2751c91bfeb26c 483
+  s_a63aeac4fd3888::t_ff245f55139e4a 520-535
+  s_a63aeac4fd3888::t_b67415d1b0265a 613
+  s_a63aeac4fd3888::t_848f4694bd6488 395-409
+  s_a63aeac4fd3888::t_9034377de43533 108-111,113
+.github/workflows/docker-matrix.yml
+  s_a63aeac4fd3888::t_0218f9262a339d 2,5,9,11,17,20-76
+  s_a63aeac4fd3888::t_53f5eff05c205b 1
+  s_a63aeac4fd3888::t_a42f35b59e1f8c 3-4
+  s_a63aeac4fd3888::t_0af69aa51c1ae8 6-8
+  s_a63aeac4fd3888::t_6cbd6613a9a587 10
+  s_a63aeac4fd3888::t_74cd6a92ef7bfd 12-16
+  s_a63aeac4fd3888::t_84e030f803c401 18-19
+docker/Dockerfile.ubuntu22.04
+  s_a63aeac4fd3888::t_bc26bd14a85b21 50
+  s_a63aeac4fd3888::t_cd1075b8a70651 36-49,51
+  s_a63aeac4fd3888::t_2ae6d5449a8698 33-35
+  s_a63aeac4fd3888::t_e056a2ecb91101 52-54
+  s_a63aeac4fd3888::t_fa5dc300ebbf35 1-32,55-85
+docker/Dockerfile.rockylinux9
+  s_a63aeac4fd3888::t_54f6d211795f98 32
+  s_a63aeac4fd3888::t_cd1075b8a70651 45-58
+  s_a63aeac4fd3888::t_bc26bd14a85b21 60
+  s_a63aeac4fd3888::t_97bf07d103cc85 30-31
+  s_a63aeac4fd3888::t_3621235a7c9c99 25-29,59,61
+  s_a63aeac4fd3888::t_0456f2ceb8fc17 1-24,33-44,62-95
+README.md
+  s_a63aeac4fd3888::t_3164dc095abfa2 229-236,239-246,252,256-257
+  s_a63aeac4fd3888::t_f0501adb7c6b49 219-221,224-226,248,259-262,265
+  s_a63aeac4fd3888::t_699c2bfe2a55b6 227-228
+docker/README.md
+  s_a63aeac4fd3888::t_aed75e9ead21e1 19-55
+  s_a63aeac4fd3888::t_1601c8b81a1505 16-18
+  s_a63aeac4fd3888::t_2820603d39294d 56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a604ab78638fcffea77588f19a98b740c08a0502",
+  "prompts": {},
+  "sessions": {
+    "s_a63aeac4fd3888": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "2ad77a45-ff94-43cc-9325-324f45e4bf70",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
