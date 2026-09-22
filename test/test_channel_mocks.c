@@ -900,6 +900,95 @@ t_addrinfo_hosts_and_service_helpers(void **state)
     unlink(hosts_templ);
 }
 
+static void
+t_addrinfo_hosts_multiple_entries_for_one_name(void **state)
+{
+    (void)state;
+
+    /* Round-robin style /etc/hosts: several lines naming the same host.
+     * nsgai_lookup_hosts_forward must return one addrinfo node per
+     * matching line, in file order, not just the first match. */
+    char hosts_templ[] = "/tmp/nsgai-hosts-multi-XXXXXX";
+    int fd             = mkstemp(hosts_templ);
+    assert_int_not_equal(fd, -1);
+
+    const char *contents = "10.0.0.1 multi.example.com multi\n"
+                           "10.0.0.2 multi.example.com\n"
+                           "10.0.0.3 other.example.com other\n"
+                           "10.0.0.4 multi.example.com\n";
+    ssize_t nw           = write(fd, contents, strlen(contents));
+    assert_int_equal((size_t)nw, strlen(contents));
+    close(fd);
+
+    nsgai_ns_t ns;
+    memset(&ns, 0, sizeof(ns));
+    ns.netns_fd   = -1;
+    ns.hosts_path = hosts_templ;
+
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_flags  = AI_CANONNAME;
+
+    struct addrinfo *res = NULL;
+    assert_int_equal(
+        nsgai_lookup_hosts_forward(&ns, "multi.example.com", "0", &hints, &res),
+        0);
+    assert_non_null(res);
+
+    /* Expect exactly the 3 non-consecutive "multi" lines, in file order,
+     * skipping the interleaved "other" entry. */
+    const char *expected[] = {"10.0.0.1", "10.0.0.2", "10.0.0.4"};
+    struct addrinfo *p     = res;
+    for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
+        assert_non_null(p);
+        assert_int_equal(p->ai_family, AF_INET);
+        char got[INET_ADDRSTRLEN];
+        assert_non_null(inet_ntop(AF_INET,
+            &((struct sockaddr_in *)p->ai_addr)->sin_addr, got, sizeof(got)));
+        assert_string_equal(got, expected[i]);
+        /* Only the first node carries the canonical name. */
+        if (i == 0) {
+            assert_non_null(p->ai_canonname);
+            assert_string_equal(p->ai_canonname, "multi.example.com");
+        } else {
+            assert_null(p->ai_canonname);
+        }
+        p = p->ai_next;
+    }
+    assert_null(p); /* exactly 3 entries, no more */
+    nsgai_freeaddrinfo(res);
+
+    /* AF_UNSPEC + mixed v4/v6 lines for the same name: both families
+     * must come back, still in file order. */
+    char hosts_templ2[] = "/tmp/nsgai-hosts-multi6-XXXXXX";
+    int fd2             = mkstemp(hosts_templ2);
+    assert_int_not_equal(fd2, -1);
+    const char *contents2 = "192.0.2.1 dual.example.com\n"
+                            "2001:db8::1 dual.example.com\n";
+    assert_int_equal(
+        (size_t)write(fd2, contents2, strlen(contents2)), strlen(contents2));
+    close(fd2);
+
+    ns.hosts_path = hosts_templ2;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+
+    res = NULL;
+    assert_int_equal(
+        nsgai_lookup_hosts_forward(&ns, "dual.example.com", "0", &hints, &res),
+        0);
+    assert_non_null(res);
+    assert_int_equal(res->ai_family, AF_INET);
+    assert_non_null(res->ai_next);
+    assert_int_equal(res->ai_next->ai_family, AF_INET6);
+    assert_null(res->ai_next->ai_next);
+    nsgai_freeaddrinfo(res);
+
+    unlink(hosts_templ);
+    unlink(hosts_templ2);
+}
+
 /* ------------------------------------------------------------------ *
  * Tests: nsgai_status_to_eai - every switch arm                       *
  * ------------------------------------------------------------------ */
@@ -1697,6 +1786,8 @@ main(void)
         cmocka_unit_test_setup(t_entry_is_fresh_variants, setup),
         cmocka_unit_test_setup(t_channel_create_uncached_paths, setup),
         cmocka_unit_test_setup(t_addrinfo_hosts_and_service_helpers, setup),
+        cmocka_unit_test_setup(
+            t_addrinfo_hosts_multiple_entries_for_one_name, setup),
         cmocka_unit_test_setup(t_status_to_eai_arms, setup),
         cmocka_unit_test_setup(t_map_ai_flags_arms, setup),
         cmocka_unit_test_setup(t_map_ni_flags_arms, setup),
