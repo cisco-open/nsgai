@@ -216,38 +216,53 @@ exit with status 77 and are reported as **Skipped** rather than failed.
 ### Container test runner
 
 For the full privileged test suite plus coverage report, use the project
-wrapper from the repository root:
+wrapper from the repository root. It builds one of several supported
+distro images (see `docker/README.md` for the full platform matrix:
+Fedora, Ubuntu 22.04/24.04, Debian 12, Rocky Linux 9):
 
 ```sh
-bash scripts/run-container-tests.sh
+bash scripts/run-container-tests.sh                       # fedora (default)
+bash scripts/run-container-tests.sh --platform ubuntu22.04
+bash scripts/run-container-tests.sh --all                 # every platform
 ```
 
-This creates and uses `./build-container/` as a container-owned build
-tree. That directory is configured inside the container with source path
-`/src`, so do not reuse it as a normal host build tree with commands
-such as `cmake --build build-container` on the host. Use the regular
-`./build/` tree for host builds instead. The container entrypoint
-recreates `build-container/` on each run so image toolchain changes
-cannot leave behind stale objects or incompatible coverage metadata.
+Images and build trees are tagged with the host's architecture
+(normalized to `amd64`/`arm64`), so the same platform can be built/tested
+on both x86_64 and arm64 machines (or under `qemu-user-static` emulation)
+without the two clobbering each other. Override auto-detection with
+`--arch`:
 
-If you want to reset the container build tree completely, remove it and
+```sh
+bash scripts/run-container-tests.sh --platform ubuntu22.04 --arch arm64
+```
+
+This creates and uses `./build-container-<platform>-<arch>/` as a
+container-owned build tree. That directory is configured inside the
+container with source path `/src`, so do not reuse it as a normal host
+build tree with commands such as `cmake --build build-container-<platform>-<arch>`
+on the host. Use the regular `./build/` tree for host builds instead. The
+container entrypoint recreates the build tree on each run so image
+toolchain changes cannot leave behind stale objects or incompatible
+coverage metadata.
+
+If you want to reset a container build tree completely, remove it and
 rerun the wrapper:
 
 ```sh
-podman unshare rm -rf build-container
+podman unshare rm -rf build-container-fedora-arm64
 bash scripts/run-container-tests.sh
 ```
 
-With docker or rootful podman, plain `rm -rf build-container` is usually
-sufficient.
+With docker or rootful podman, plain `rm -rf build-container-fedora-arm64`
+is usually sufficient.
 
-The container image carries its own toolchain, including `clang-format`.
-If `nsgai_format_check` passes on the host but fails in the container
-or vice versa, first rebuild the image so the container toolchain matches
-the current `Dockerfile` more closely:
+Each container image carries its own toolchain, including `clang-format`.
+If `nsgai_format_check` passes on the host but fails in a container or
+vice versa, first rebuild the image so the container toolchain matches
+the corresponding `docker/Dockerfile.<platform>` more closely:
 
 ```sh
-bash scripts/run-container-tests.sh --rebuild
+bash scripts/run-container-tests.sh --platform ubuntu22.04 --rebuild
 ```
 
 Formatting differences across environments are usually caused by running

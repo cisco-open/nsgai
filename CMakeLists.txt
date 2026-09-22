@@ -105,8 +105,12 @@ endif()
 # ----- cmocka (required when tests are enabled) ---------------------------
 # Used by white-box tests and preload tests for per-test pass/fail reports.
 if(NSGAI_BUILD_TESTS)
+    # Some distros (e.g. Ubuntu 22.04's libcmocka-dev) ship a CMake config
+    # package that reports cmocka_FOUND=TRUE without actually defining the
+    # cmocka::cmocka import target, so check for the target too before
+    # trusting the CONFIG result.
     find_package(cmocka CONFIG QUIET)
-    if(cmocka_FOUND)
+    if(cmocka_FOUND AND TARGET cmocka::cmocka)
         set(NSGAI_CMOCKA_TARGET cmocka::cmocka)
     else()
         find_package(PkgConfig REQUIRED)
@@ -388,6 +392,21 @@ if(NSGAI_BUILD_TESTS)
             add_test(NAME nsgai_adig_valgrind
                      COMMAND ${_vg} $<TARGET_FILE:nsgai_adig> -4 -c localhost)
         endif()
+
+        # Safety net: some valgrind/glibc combinations (observed with
+        # valgrind 3.22 on Ubuntu 24.04's glibc 2.39) can deadlock in
+        # signal/futex codepaths rather than fail cleanly. A generous
+        # TIMEOUT turns a CI-hanging hang into a normal test failure.
+        set_tests_properties(
+            nsgai_basic_valgrind
+            nsgai_api_coverage_valgrind
+            nsgai_rsyslog_null_node_regression_valgrind
+            nsgai_teardown_dlopen_valgrind
+            nsgai_async_api_valgrind
+            PROPERTIES TIMEOUT 60)
+        if(NSGAI_BUILD_EXAMPLES)
+            set_tests_properties(nsgai_adig_valgrind PROPERTIES TIMEOUT 60)
+        endif()
     endif()
 endif()
 
@@ -461,6 +480,7 @@ if(NSGAI_BUILD_TESTS AND NSGAI_ENABLE_NETNS_TESTS AND NSGAI_BUILD_EXAMPLES)
             "NSGAI_LIB_DIR=$<TARGET_FILE_DIR:nsgai>;NSGAI_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR};NSGAI_VALGRIND=1;NSGAI_VALGRIND_BIN=${VALGRIND_EXECUTABLE}"
             FIXTURES_REQUIRED coredns
             SKIP_RETURN_CODE 77
+            TIMEOUT 120
         )
     endif()
 
@@ -496,6 +516,22 @@ if(NSGAI_ENABLE_COVERAGE)
     find_program(LCOV_EXECUTABLE    lcov)
     find_program(GENHTML_EXECUTABLE genhtml)
     find_program(GCOVR_EXECUTABLE   gcovr)
+
+    # gcovr < 6.0 (e.g. Ubuntu 22.04's packaged 5.0) only accepts
+    # --gcov-ignore-parse-errors as a bare boolean flag; the fine-grained
+    # "=negative_hits.warn_once_per_file" argument form is 6.0+ only.
+    set(_gcovr_ignore_parse_errors_flag --gcov-ignore-parse-errors)
+    if(GCOVR_EXECUTABLE)
+        execute_process(
+            COMMAND ${GCOVR_EXECUTABLE} --version
+            OUTPUT_VARIABLE _gcovr_version_output
+            ERROR_QUIET)
+        string(REGEX MATCH "[0-9]+\\.[0-9]+(\\.[0-9]+)?" _gcovr_version "${_gcovr_version_output}")
+        if(_gcovr_version AND _gcovr_version VERSION_GREATER_EQUAL "6.0")
+            set(_gcovr_ignore_parse_errors_flag
+                --gcov-ignore-parse-errors=negative_hits.warn_once_per_file)
+        endif()
+    endif()
 
     set(_cov_dir  ${CMAKE_CURRENT_BINARY_DIR}/coverage)
     set(_cov_info ${_cov_dir}/coverage.info)
@@ -574,7 +610,7 @@ if(NSGAI_ENABLE_COVERAGE)
                     --root ${CMAKE_CURRENT_SOURCE_DIR}
                     --filter ${CMAKE_CURRENT_SOURCE_DIR}/src
                     --filter ${CMAKE_CURRENT_SOURCE_DIR}/include
-                    --gcov-ignore-parse-errors=negative_hits.warn_once_per_file
+                    ${_gcovr_ignore_parse_errors_flag}
                     --html-details ${_cov_dir}/html/index.html
                     --print-summary
                     ${CMAKE_CURRENT_BINARY_DIR}

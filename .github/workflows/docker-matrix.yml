@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+# All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Builds and runs the full privileged test suite (see
+# scripts/run-container-tests.sh) inside each supported distro image
+# under docker/Dockerfile.<platform>, on both amd64 and arm64. This is
+# the release-facing platform-support matrix; see docker/README.md for
+# the platform list.
+#
+# arm64 jobs use GitHub-hosted arm64 Linux runners (`ubuntu-24.04-arm`),
+# available free for public repos. If your org only has amd64 runners
+# available (e.g. GHE without hosted arm64 capacity), replace that label
+# with a self-hosted arm64 runner label instead.
+
+name: docker-platform-matrix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform-build-test:
+    name: ${{ matrix.platform }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - fedora
+          - ubuntu22.04
+          - ubuntu24.04
+          - debian12
+          - rockylinux9
+        arch:
+          - amd64
+          - arm64
+
+    env:
+      NSGAI_CONTAINER_RUNTIME: docker
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image and run full test suite (${{ matrix.platform }}/${{ matrix.arch }})
+        run: |
+          bash scripts/run-container-tests.sh --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" --rebuild
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.platform }}-${{ matrix.arch }}
+          path: build-container-${{ matrix.platform }}-${{ matrix.arch }}/coverage/html
+          if-no-files-found: ignore
+

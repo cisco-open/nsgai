@@ -27,17 +27,20 @@
 #
 #   * build-test   : builds c-ares (from upstream main, cached), then
 #                    nsgai, then runs the non-privileged ctest suite
-#                    (format-check + basic + valgrind variants).
+#                    (format-check + basic + valgrind variants). Runs on
+#                    both amd64 and arm64.
 #
 # Mark both jobs as Required Status Checks in the repository's
 # branch-protection settings so PRs cannot merge until they pass.
 #
 # Runner labels:
 #   - On GitHub.com / GHE with GitHub-hosted runners: `ubuntu-latest`
-#     works as-is.
+#     (amd64) and `ubuntu-24.04-arm` (arm64) work as-is; the arm64 label
+#     is free for public repos.
 #   - On GHE-only orgs (e.g. wwwin-github.cisco.com without hosted
-#     runners) replace `ubuntu-latest` with your org's self-hosted
-#     runner label (commonly something like `self-hosted, linux, x64`).
+#     runners) replace these with your org's self-hosted runner labels
+#     (commonly something like `self-hosted, linux, x64` /
+#     `self-hosted, linux, arm64`).
 
 name: ci
 
@@ -71,8 +74,12 @@ jobs:
           cmake --build build --target format-check
 
   build-test:
-    name: build + ctest
-    runs-on: ubuntu-latest
+    name: build + ctest (${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
     env:
       CARES_REF: main         # bump to a tag once upstream cuts one we like
       CARES_PREFIX: ${{ github.workspace }}/c-ares.install
@@ -87,14 +94,14 @@ jobs:
               valgrind clang-format pkg-config
 
       # ---- c-ares (cached) -----------------------------------------------
-      # Key on the upstream ref + the runner image so we rebuild when
-      # either changes.
+      # Key on the upstream ref + arch so amd64/arm64 caches never mix
+      # (runner.os is "Linux" for both).
       - name: Cache c-ares install tree
         id: cache-cares
         uses: actions/cache@v4
         with:
           path: ${{ env.CARES_PREFIX }}
-          key: cares-${{ runner.os }}-${{ env.CARES_REF }}-v1
+          key: cares-${{ runner.os }}-${{ matrix.arch }}-${{ env.CARES_REF }}-v1
 
       - name: Build c-ares
         if: steps.cache-cares.outputs.cache-hit != 'true'

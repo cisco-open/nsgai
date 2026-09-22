@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+# All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Debian 12 (bookworm) test image for nsgai. See docker/README.md for the
+# full platform matrix and scripts/run-container-tests.sh for the
+# canonical invocation (--platform debian12).
+
+FROM debian:12
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        pkg-config \
+        libtool \
+        autoconf \
+        automake \
+        iproute2 \
+        iputils-ping \
+        valgrind \
+        gcovr \
+        python3-pip \
+        libcmocka-dev \
+        libc-ares-dev \
+        git \
+        curl \
+        ca-certificates \
+        tar \
+        gzip \
+        findutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pin a modern clang-format from PyPI so its behavior matches the other
+# platform images regardless of what the distro happens to package.
+ARG CLANG_FORMAT_VERSION=22.1.8
+RUN pip3 install --no-cache-dir --break-system-packages "clang-format==${CLANG_FORMAT_VERSION}"
+
+# Use the distro c-ares package if it meets nsgai's minimum version,
+# otherwise build the pinned upstream ref from source.
+ARG CARES_REPO=https://github.com/c-ares/c-ares.git
+ARG CARES_REF=main
+ARG CARES_MIN_VERSION=1.27.0
+ENV CARES_PREFIX=/opt/c-ares
+COPY scripts/install-cares.sh /usr/local/bin/install-cares.sh
+RUN /usr/local/bin/install-cares.sh \
+        --prefix "${CARES_PREFIX}" \
+        --ref "${CARES_REF}" \
+        --min-version "${CARES_MIN_VERSION}" \
+        --repo "${CARES_REPO}"
+ENV CMAKE_PREFIX_PATH=${CARES_PREFIX}
+
+# Pre-fetch CoreDNS at image build time so the netns DNS tests never
+# need network at runtime. Version pinned to match test/fetch_coredns.sh.
+ARG COREDNS_VERSION=1.11.3
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+        x86_64)  ca="amd64" ;; \
+        aarch64) ca="arm64" ;; \
+        armv7l)  ca="arm"   ;; \
+        *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    url="https://github.com/coredns/coredns/releases/download/v${COREDNS_VERSION}/coredns_${COREDNS_VERSION}_linux_${ca}.tgz"; \
+    curl -fsSL "$url" -o /tmp/coredns.tgz; \
+    tar -xzf /tmp/coredns.tgz -C /usr/local/bin coredns; \
+    rm -f /tmp/coredns.tgz; \
+    chmod +x /usr/local/bin/coredns; \
+    /usr/local/bin/coredns --version
+
+WORKDIR /src
