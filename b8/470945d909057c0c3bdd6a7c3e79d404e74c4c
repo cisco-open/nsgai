@@ -1,0 +1,21 @@
+test/test_channel_mocks.c
+  s_a63aeac4fd3888::t_523ac8364ee440 919
+  s_a63aeac4fd3888::t_e3fb4f3bd3a3bd 1789-1790
+  s_a63aeac4fd3888::t_1e59fa9403aa7b 903-918,920-991
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b8470945d909057c0c3bdd6a7c3e79d404e74c4c",
+  "prompts": {},
+  "sessions": {
+    "s_a63aeac4fd3888": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "2ad77a45-ff94-43cc-9325-324f45e4bf70",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
