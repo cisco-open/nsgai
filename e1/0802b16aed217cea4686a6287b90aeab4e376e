@@ -1,0 +1,51 @@
+.github/settings.yml
+  s_7b1662060eb718::t_a7a053a9b75154 1-16
+  s_7b1662060eb718::t_bbc39ca26ceb6e 17
+.github/dependabot.yml
+  s_7b1662060eb718::t_a7a053a9b75154 1-16
+  s_7b1662060eb718::t_bbc39ca26ceb6e 17
+docker/README.md
+  s_7b1662060eb718::t_bbc39ca26ceb6e 1-19
+CONTRIBUTING.md
+  s_7b1662060eb718::t_bbc39ca26ceb6e 1-19
+MAINTAINERS.md
+  s_7b1662060eb718::t_bbc39ca26ceb6e 1-19
+sbom/README.md
+  s_7b1662060eb718::t_bbc39ca26ceb6e 1-19
+.github/ISSUE_TEMPLATE/feature_request.yml
+  s_7b1662060eb718::t_a7a053a9b75154 1-16
+  s_7b1662060eb718::t_bbc39ca26ceb6e 17
+.github/copilot-instructions.md
+  s_7b1662060eb718::t_bbc39ca26ceb6e 1-19
+.github/pull_request_template.md
+  s_7b1662060eb718::t_bbc39ca26ceb6e 1-19
+CODE_OF_CONDUCT.md
+  s_7b1662060eb718::t_bbc39ca26ceb6e 1-19
+.gitignore
+  s_7b1662060eb718::t_a7a053a9b75154 1-16
+  s_7b1662060eb718::t_bbc39ca26ceb6e 17
+SECURITY.md
+  s_7b1662060eb718::t_bbc39ca26ceb6e 1-19
+.github/ISSUE_TEMPLATE/bug_report.yml
+  s_7b1662060eb718::t_bbc39ca26ceb6e 17
+  s_7b1662060eb718::t_a7a053a9b75154 1-16
+nsgai.pc.in
+  s_7b1662060eb718::t_bbc39ca26ceb6e 17
+  s_7b1662060eb718::t_a7a053a9b75154 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e10802b16aed217cea4686a6287b90aeab4e376e",
+  "prompts": {},
+  "sessions": {
+    "s_7b1662060eb718": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "6c8bd58f-2059-4ac7-9cb6-38ead4ea5123",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
