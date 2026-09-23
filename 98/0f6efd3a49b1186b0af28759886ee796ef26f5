@@ -1,0 +1,42 @@
+SECURITY.md
+  s_7b1662060eb718::t_7e9129ba342e4f 1-56
+CMakeLists.txt
+  s_7b1662060eb718::t_3c7f273a93ff0f 31
+.github/dependabot.yml
+  s_7b1662060eb718::t_47895328ce7d72 1-20
+README.md
+  s_7b1662060eb718::t_d28f02ea930c1f 371,379-382
+  s_7b1662060eb718::t_7890eb21270a48 372-378
+.github/workflows/ci.yml
+  s_7b1662060eb718::t_3c7f273a93ff0f 40-41
+.github/ISSUE_TEMPLATE/feature_request.yml
+  s_7b1662060eb718::t_082fbeca3d22ca 1-48
+CODE_OF_CONDUCT.md
+  s_7b1662060eb718::t_e69dd684b2f75f 59
+  s_7b1662060eb718::t_5439b1c592b919 58,60-61
+  s_7b1662060eb718::t_688727fca99951 1-57,62-83
+.github/settings.yml
+  s_7b1662060eb718::t_bbb8e2111406f5 1-26
+MAINTAINERS.md
+  s_7b1662060eb718::t_a7d0b095471c84 1-7
+.github/ISSUE_TEMPLATE/bug_report.yml
+  s_7b1662060eb718::t_78aece6966178f 1-82
+CONTRIBUTING.md
+  s_7b1662060eb718::t_157392a4a84af1 1-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "980f6efd3a49b1186b0af28759886ee796ef26f5",
+  "prompts": {},
+  "sessions": {
+    "s_7b1662060eb718": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "6c8bd58f-2059-4ac7-9cb6-38ead4ea5123",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
