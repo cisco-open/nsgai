@@ -30,7 +30,7 @@ set(NSGAI_PROJECT_VERSION_DISPLAY "${PROJECT_VERSION}${NSGAI_VERSION_SUFFIX}")
 set(NSGAI_SPDX_NAMESPACE_BASE
     "https://github.com/cisco-open/nsgai/spdx"
     CACHE STRING "Base URL for generated SPDX document namespaces")
-set(NSGAI_SPDX_SOURCE_DOWNLOAD_LOCATION "NOASSERTION" CACHE STRING
+set(NSGAI_SPDX_SOURCE_DOWNLOAD_LOCATION "https://github.com/cisco-open/nsgai" CACHE STRING
     "Source archive URL recorded in the generated SPDX document")
 if(NOT DEFINED NSGAI_SPDX_CREATED)
     string(TIMESTAMP _nsgai_spdx_created "%Y-%m-%dT%H:%M:%SZ" UTC)

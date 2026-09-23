@@ -1,3 +1,22 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+
+Copyright (c) 2026 by Cisco Systems, Inc., and/or its affiliates.
+All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 # SPDX source SBOM
 
 `nsgai-source.spdx.json.in` is the checked-in SPDX 2.3 source-SBOM
@@ -22,7 +41,7 @@ release-specific metadata:
 cmake -S . -B build-release \
   -DCMAKE_PREFIX_PATH=/path/to/c-ares \
   -DNSGAI_SPDX_NAMESPACE_BASE=https://example.org/nsgai/spdx \
-  -DNSGAI_SPDX_SOURCE_DOWNLOAD_LOCATION=https://example.org/nsgai/archive/v0.2.1.tar.gz \
+  -DNSGAI_SPDX_SOURCE_DOWNLOAD_LOCATION=https://github.com/cisco-open/nsgai/archive/refs/tags/v0.2.1.tar.gz \
   -DNSGAI_SPDX_CREATED=2026-09-22T00:00:00Z
 cmake --build build-release --target source-sbom
 ```
