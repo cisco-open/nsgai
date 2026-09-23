@@ -1,0 +1,82 @@
+---
+name: Bug Report
+description: Report a bug to help us improve.
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Please provide a clear description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: Please describe what you expected would happen.
+    validations:
+      required: true
+  - type: dropdown
+    id: version
+    attributes:
+      label: Affected Version
+      description: If applicable, provide the version or release tag where this issue was encountered.
+      options:
+        - main
+        - v0.2.1
+        - Other or unknown
+      default: 0
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please include the OS, architecture, compiler, CMake version, c-ares version, and installation method.
+      placeholder: |
+        OS and version:
+        Architecture:
+        Compiler and version:
+        CMake version:
+        c-ares version:
+        Installation method:
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Please provide all steps needed to reproduce the behavior.
+      placeholder: |
+        1. In this environment...
+        2. With this configuration...
+        3. Run `this command`...
+        4. See error...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Please include relevant logs or test output. Remove sensitive information first.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: By submitting this issue, you agree to the following.
+      options:
+        - label: I have read the [contributing guidelines](https://github.com/cisco-open/nsgai/blob/main/CONTRIBUTING.md).
+          required: true
+        - label: I have verified this does not duplicate an existing issue.
+          required: true
+        - label: This is not a security vulnerability. I will follow [SECURITY.md](https://github.com/cisco-open/nsgai/blob/main/SECURITY.md) for security reports.
+          required: true

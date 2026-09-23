@@ -368,3 +368,15 @@ one process.
 * ELF symbol visibility/versioning is enforced via `src/nsgai.map`
   (namespace `NSGAI_0`), but ABI compatibility checks are not yet
   automated in CI.
+
+## Contributing
+
+Contributions are welcome. Please read
+[CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request.
+Issues and proposed changes can be submitted through the
+[GitHub repository](https://github.com/cisco-open/nsgai).
+
+## License
+
+This project is licensed under the Apache License, Version 2.0. See
+[LICENSE](LICENSE) for the full license text.

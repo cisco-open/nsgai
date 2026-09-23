@@ -1,0 +1,26 @@
+---
+# Repository settings for the Probot Settings app.
+# See https://github.com/probot/settings for installation and usage.
+
+repository:
+  name: nsgai
+  description: Network-namespace-aware getaddrinfo replacement using c-ares
+  homepage: https://github.com/cisco-open/nsgai
+  topics:
+    - c-ares
+    - dns
+    - linux
+    - network-namespaces
+    - networking
+  private: false
+  has_issues: true
+  has_projects: false
+  has_wiki: false
+  has_downloads: true
+  default_branch: main
+  allow_squash_merge: true
+  allow_merge_commit: true
+  allow_rebase_merge: true
+  delete_branch_on_merge: true
+  enable_automated_security_fixes: true
+  enable_vulnerability_alerts: true

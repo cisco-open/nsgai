@@ -37,8 +37,8 @@
 #   - On GitHub.com / GHE with GitHub-hosted runners: `ubuntu-latest`
 #     (amd64) and `ubuntu-24.04-arm` (arm64) work as-is; the arm64 label
 #     is free for public repos.
-#   - On GHE-only orgs (e.g. wwwin-github.cisco.com without hosted
-#     runners) replace these with your org's self-hosted runner labels
+#   - On GitHub Enterprise installations without hosted runners, replace
+#     these with your org's self-hosted runner labels
 #     (commonly something like `self-hosted, linux, x64` /
 #     `self-hosted, linux, arm64`).
 

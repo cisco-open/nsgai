@@ -28,7 +28,7 @@ set(NSGAI_PROJECT_VERSION_DISPLAY "${PROJECT_VERSION}${NSGAI_VERSION_SUFFIX}")
 # The source tree contains the template; CMake writes release-specific
 # metadata to the build tree so it can be attached to a release separately.
 set(NSGAI_SPDX_NAMESPACE_BASE
-    "https://wwwin-github.cisco.com/xr-oe/nsgai/spdx"
+    "https://github.com/cisco-open/nsgai/spdx"
     CACHE STRING "Base URL for generated SPDX document namespaces")
 set(NSGAI_SPDX_SOURCE_DOWNLOAD_LOCATION "NOASSERTION" CACHE STRING
     "Source archive URL recorded in the generated SPDX document")

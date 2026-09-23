@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    groups:
+      github-actions:
+        patterns:
+          - "actions/*"
+          - "github/*"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+    schedule:
+      interval: "weekly"
