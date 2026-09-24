@@ -37,6 +37,7 @@ if(NOT DEFINED NSGAI_SPDX_CREATED)
     set(NSGAI_SPDX_CREATED "${_nsgai_spdx_created}" CACHE STRING
         "SPDX creation time in UTC; set explicitly for reproducible release builds")
 endif()
+
 set(NSGAI_SPDX_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/sbom")
 set(NSGAI_SPDX_OUTPUT
     "${NSGAI_SPDX_OUTPUT_DIR}/nsgai-${PROJECT_VERSION}-source.spdx.json")
@@ -68,7 +69,6 @@ add_compile_definitions(_GNU_SOURCE)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
 endif()
-
 add_compile_options(
     -Wall
     -Wextra
@@ -531,6 +531,28 @@ if(NSGAI_BUILD_NSS)
     install(TARGETS nss_nsgai LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
 
+# ----- CPack: downstream package generation -------------------------------
+# CPack is available for local use and downstream distribution packaging.
+# Cisco source releases do not attach the generated binary packages.
+set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_VENDOR "Cisco Systems, Inc.")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "Network-namespace-aware getaddrinfo replacement using c-ares")
+set(CPACK_PACKAGE_DESCRIPTION_FILE ${CMAKE_CURRENT_SOURCE_DIR}/README.md)
+set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE)
+set(CPACK_PACKAGING_INSTALL_PREFIX /)
+set(CPACK_CMAKE_GENERATOR "Unix Makefiles")
+set(CPACK_GENERATOR TGZ)
+if(CMAKE_SYSTEM_NAME MATCHES Linux)
+    list(APPEND CPACK_GENERATOR RPM DEB)
+endif()
+set(CPACK_RPM_PACKAGE_LICENSE "Apache-2.0")
+set(CPACK_RPM_PACKAGE_URL "https://github.com/cisco-open/nsgai")
+set(CPACK_RPM_PACKAGE_SUMMARY ${CPACK_PACKAGE_DESCRIPTION_SUMMARY})
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Cisco Systems, Inc. <devx@cisco.com>")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/cisco-open/nsgai")
+include(CPack)
 # ----- coverage report targets -------------------------------------------
 if(NSGAI_ENABLE_COVERAGE)
     find_program(LCOV_EXECUTABLE    lcov)
@@ -688,43 +710,3 @@ else()
     )
     message(STATUS "Doxygen not found; 'docs' target will be a stub.")
 endif()
-
-# ----- CPack: source and binary package generation -------------------------
-# Generate source tarballs for release and optional binary packages (RPM/DEB).
-# Usage:
-#   cpack -G TGZ                    # source tarball
-#   cpack -G RPM                    # binary RPM (Fedora/RHEL)
-#   cpack -G DEB                    # binary DEB (Debian/Ubuntu)
-#
-# For Yocto/OpenEmbedded integration: 'cpack -G TGZ' produces source tarballs
-# that bitbake recipes can fetch and package according to the recipe.
-
-set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_VENDOR "Cisco Systems, Inc.")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-    "Network-namespace-aware getaddrinfo replacement using c-ares")
-set(CPACK_PACKAGE_DESCRIPTION_FILE ${CMAKE_CURRENT_SOURCE_DIR}/README.md)
-set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE)
-
-# Install prefix and layout.
-set(CPACK_PACKAGING_INSTALL_PREFIX /)
-set(CPACK_CMAKE_GENERATOR "Unix Makefiles")
-
-# Generator selection: default TGZ for portability.
-set(CPACK_GENERATOR TGZ)
-if(CMAKE_SYSTEM_NAME MATCHES Linux)
-    # On Linux distros, offer RPM and DEB as alternatives.
-    list(APPEND CPACK_GENERATOR RPM DEB)
-endif()
-
-# RPM settings.
-set(CPACK_RPM_PACKAGE_LICENSE "Apache-2.0")
-set(CPACK_RPM_PACKAGE_URL "https://github.com/cisco-open/nsgai")
-set(CPACK_RPM_PACKAGE_SUMMARY ${CPACK_PACKAGE_DESCRIPTION_SUMMARY})
-
-# DEB settings.
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Cisco Systems, Inc. <devx@cisco.com>")
-set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/cisco-open/nsgai")
-
-include(CPack)

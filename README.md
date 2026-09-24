@@ -36,7 +36,8 @@ already bind-mounts
 `/etc/netns/NAME/resolv.conf` over `/etc/resolv.conf` — and stay on
 libc.
 
-It ships three shared objects:
+Building nsgai produces three shared objects for local installation or use by
+downstream packagers:
 
 | Shared object              | Purpose                                                  |
 |----------------------------|----------------------------------------------------------|

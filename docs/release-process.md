@@ -19,7 +19,17 @@ limitations under the License.
 
 # nsgai Release Process
 
-This document defines the manual release process while GitHub Actions is not yet available.
+This document defines the source-only release process while GitHub Actions is
+not yet available.
+
+The project publishes only:
+
+- The GitHub source archive for the release tag (`source.tgz` or equivalent).
+- The instantiated SPDX source SBOM generated with the `source-sbom` target.
+
+The project does not publish shared libraries, executables, RPMs, DEBs, or
+other binary artifacts. Downstream distributions and users build the source
+with their own toolchain and dependency packages.
 
 ## Goals
 
@@ -119,14 +129,19 @@ For each new release candidate, compare against the latest released baseline.
   - `/etc/netns/<name>/hosts` falls back to `/etc/hosts`
   - fallback is per file (partial override supported)
 7. Update `README.md` and release notes with API/ABI changes.
-8. Generate packages (optional for manual distribution):
-   ```bash
-   cd build
-   cpack -G TGZ    # source tarball (recommended for Yocto/OpenEmbedded)
-   cpack -G RPM    # binary RPM (Fedora/RHEL/openSUSE)
-   cpack -G DEB    # binary DEB (Debian/Ubuntu)
-   ```
-9. Tag release.
+8. Create and push the release tag. GitHub provides the source archive for
+  the tag.
+9. Generate the instantiated SPDX SBOM from a clean release configuration:
+  ```bash
+  cmake -S . -B build-release \
+    -DCMAKE_PREFIX_PATH=/path/to/c-ares \
+    -DNSGAI_SPDX_NAMESPACE_BASE=https://github.com/cisco-open/nsgai/spdx \
+    -DNSGAI_SPDX_SOURCE_DOWNLOAD_LOCATION=https://github.com/cisco-open/nsgai/archive/refs/tags/vX.Y.Z.tar.gz \
+    -DNSGAI_SPDX_CREATED=YYYY-MM-DDThh:mm:ssZ
+  cmake --build build-release --target source-sbom
+  ```
+10. Attach the generated `build-release/sbom/nsgai-X.Y.Z-source.spdx.json`
+   to the GitHub release alongside the source archive.
 
 ## Standard tooling guidance
 
@@ -140,11 +155,30 @@ Recommended:
 
 A custom YAML hash database for APIs is optional metadata, not a substitute for ABI tooling.
 
-## Packaging and distribution
+## Downstream packaging
+
+Distribution maintainers may fetch the source archive and build their own
+packages for their operating system. The CMake install rules provide the
+standard installation layout; package ownership, compiler flags, dependency
+versions, and resulting binaries belong to the downstream distribution.
+
+For local or downstream package generation, CPack remains enabled:
+
+```bash
+cmake --build build
+cd build
+cpack -G RPM  # Fedora/RHEL/openSUSE package
+cpack -G DEB  # Debian/Ubuntu package
+```
+
+These are downstream or developer outputs, not Cisco release artifacts. The
+`TGZ` CPack output is an install-tree package, not the canonical source
+archive; releases use the source archive generated from the GitHub tag.
 
 ### For Yocto/OpenEmbedded
 
-The project supports `cmake install` with standard directory layout suitable for Yocto bitbake recipes:
+The project supports `cmake install` with a standard directory layout suitable
+for Yocto bitbake recipes:
 
 ```bash
 mkdir -p install_root
@@ -152,23 +186,5 @@ cmake --install build --prefix install_root
 # Creates: install_root/bin/, install_root/include/, install_root/lib64/
 ```
 
-Bitbake recipes can fetch the source tarball and build/package according to the recipe's configuration:
-
-```bash
-cpack -G TGZ      # generates nsgai-X.Y.Z-Linux.tar.gz
-```
-
-### For Fedora/RHEL/openSUSE
-
-```bash
-cpack -G RPM      # generates nsgai-X.Y.Z-Linux.rpm
-```
-
-### For Debian/Ubuntu
-
-```bash
-cpack -G DEB      # generates nsgai-X.Y.Z-Linux.deb
-```
-
-Packages are created via CMake's CPack, which generates source and binary distributions. 
-See [CPack documentation](https://cmake.org/cmake/help/latest/module/CPack.html) for customization.
+Recipes should fetch the release source archive and build/package it within
+the distribution's own infrastructure.
