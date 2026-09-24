@@ -1,0 +1,30 @@
+test/test_async_api.c
+  s_70d22b78842803::t_cec3a386dc2c88 658-659
+scripts/release-check.sh
+  s_70d22b78842803::t_d6d1fe13d04714 28
+  s_70d22b78842803::t_af2333d55d1a4c 36,52
+  s_70d22b78842803::t_54e8a9f6021d39 53-55
+  s_70d22b78842803::t_3350be53fd4aca 51,70,93-96,128-135,225-253,255
+  s_70d22b78842803::t_dcc3afdba65627 140-150
+  s_70d22b78842803::t_fd4478359c3bec 151
+abi/baselines/README.md
+  s_70d22b78842803::t_3350be53fd4aca 22-24,54-66,69-70,78-79
+docs/release-process.md
+  s_70d22b78842803::t_3350be53fd4aca 98,116-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ed98a3d7170f71a36f6ff99e5a3cdb5d53eadfdf",
+  "prompts": {},
+  "sessions": {
+    "s_70d22b78842803": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "59e88c2c-195d-46ac-992b-6208f2936949",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
