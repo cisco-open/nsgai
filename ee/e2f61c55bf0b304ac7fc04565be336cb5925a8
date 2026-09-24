@@ -1,0 +1,28 @@
+docker/Dockerfile.ubuntu26.04
+  s_70d22b78842803::t_21d97686decad8 1-85
+.github/dependabot.yml
+  s_70d22b78842803::t_2793c40fcec8ef 36-40
+.github/workflows/docker-matrix.yml
+  s_70d22b78842803::t_f955d431f6aa4b 53,55
+docker/README.md
+  s_70d22b78842803::t_f955d431f6aa4b 33,42
+  s_70d22b78842803::t_a72a257481057f 35
+docker/Dockerfile.debian13
+  s_70d22b78842803::t_828c71a6737bcd 1-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eee2f61c55bf0b304ac7fc04565be336cb5925a8",
+  "prompts": {},
+  "sessions": {
+    "s_70d22b78842803": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "59e88c2c-195d-46ac-992b-6208f2936949",
+        "model": "unknown"
+      },
+      "human_author": null
+    }
+  }
+}
