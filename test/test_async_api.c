@@ -655,7 +655,8 @@ test_deterministic_error_paths(void)
     MUST(nsgai_error(&req_wait) != 0);
     MUST(req_wait.ar_result == NULL);
 
-    hints_nowait.ai_family = AF_INET;
+    /* Use an unsupported family so the asynchronous error is DNS-independent. */
+    hints_nowait.ai_family = AF_UNIX;
     hints_nowait.ai_flags  = AI_NUMERICHOST;
     req_nowait.ar_name     = "still-not-an-ip";
     req_nowait.ar_request  = &hints_nowait;

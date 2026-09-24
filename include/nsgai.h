@@ -98,9 +98,9 @@ extern "C" {
 /** @brief Patch version of the nsgai public API. */
 #define NSGAI_VERSION_PATCH 1
 /** @brief Suffix for unreleased development builds. */
-#define NSGAI_VERSION_SUFFIX "-dev"
+#define NSGAI_VERSION_SUFFIX ""
 /** @brief Full version string for the current build tree. */
-#define NSGAI_VERSION_STRING "0.2.1-dev"
+#define NSGAI_VERSION_STRING "0.2.1"
 
 /**
  * @brief Host/DNS lookup ordering policy for namespace-aware resolution.

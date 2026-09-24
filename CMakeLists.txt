@@ -21,7 +21,7 @@ project(nsgai
         DESCRIPTION "Network-namespace-aware getaddrinfo replacement using c-ares"
         LANGUAGES C)
 
-set(NSGAI_VERSION_SUFFIX "-dev")
+set(NSGAI_VERSION_SUFFIX "")
 set(NSGAI_PROJECT_VERSION_DISPLAY "${PROJECT_VERSION}${NSGAI_VERSION_SUFFIX}")
 
 # ----- source SBOM -------------------------------------------------------

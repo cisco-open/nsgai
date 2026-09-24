@@ -19,7 +19,9 @@ limitations under the License.
 
 # ABI Baselines
 
-This directory stores reference shared objects for ABI compatibility checks during release.
+This directory may store reference shared objects for ABI compatibility checks
+during release. A committed binary is optional; the release gate can build a
+previous release tag in a temporary worktree instead.
 
 ## Organization
 
@@ -49,9 +51,23 @@ The script will:
 4. Run `abidiff` to compare the baseline against the current build.
 5. Write the ABI diff report to `build/release/abidiff.txt`.
 
+To build the baseline dynamically from a previous tag without committing a
+binary, use `--baseline-tag`:
+
+```sh
+scripts/release-check.sh \
+  --baseline-tag v0.2.0 \
+  --cmake-prefix-path /path/to/c-ares/install \
+  --cares-libdir /path/to/c-ares/lib
+```
+
+The script creates a detached temporary worktree, builds only the library,
+runs `abidiff`, and removes the worktree afterward.
+
 ## Baseline creation
 
-After tagging a release, extract the built library and store it:
+If reproducible local baselines are preferred, extract the built library after
+tagging a release and store it:
 
 ```sh
 mkdir -p abi/baselines/vX.Y.Z
@@ -59,7 +75,8 @@ cp build/libnsgai.so.X.Y.Z abi/baselines/vX.Y.Z/
 git add abi/baselines/vX.Y.Z/
 ```
 
-Commit the baseline alongside the release tag.
+Commit the baseline alongside the release tag. This is optional when using
+`--baseline-tag`.
 
 ## ABI compatibility rules
 

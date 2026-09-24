@@ -95,7 +95,7 @@ Run all release gates from repository root:
 scripts/release-check.sh \
   --cmake-prefix-path /home/balsup/c-ares/main.install/usr \
   --cares-libdir /home/balsup/c-ares/main.install/usr/lib64 \
-  --baseline-lib abi/baselines/v0.1.0/libnsgai.so.0.1.0
+  --baseline-tag v0.2.0
 ```
 
 The script performs:
@@ -113,6 +113,9 @@ Store one baseline shared object per release tag, for example:
 - `abi/baselines/v0.2.0/libnsgai.so.0.2.0`
 
 For each new release candidate, compare against the latest released baseline.
+The baseline may be supplied as a committed library with `--baseline-lib`, or
+built dynamically from the previous release tag in a temporary worktree with
+`--baseline-tag`. Committing binary baselines is optional.
 
 ## Required release checklist
 

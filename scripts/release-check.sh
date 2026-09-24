@@ -25,7 +25,7 @@
 set -euo pipefail
 
 usage() {
-    cat <<'EOF'
+        cat <<'EOF'
 Usage: scripts/release-check.sh [options]
 
 Options:
@@ -33,6 +33,7 @@ Options:
   --cmake-prefix-path PATH  Value for -DCMAKE_PREFIX_PATH=...
   --cares-libdir DIR        c-ares runtime library dir for tests
   --baseline-lib FILE       Previous release libnsgai.so for ABI diff
+  --baseline-tag TAG        Build the previous release from a temporary worktree
   --skip-tests              Skip ctest execution
   --skip-symbols            Skip symbol-map gate
   --skip-abi                Skip ABI gate (abidiff)
@@ -45,6 +46,11 @@ Examples:
 
   scripts/release-check.sh \
     --baseline-lib abi/baselines/v0.1.0/libnsgai.so.0.1.0 \
+    --cmake-prefix-path /home/balsup/c-ares/main.install/usr \
+    --cares-libdir /home/balsup/c-ares/main.install/usr/lib64
+
+  scripts/release-check.sh \
+    --baseline-tag v0.2.0 \
     --cmake-prefix-path /home/balsup/c-ares/main.install/usr \
     --cares-libdir /home/balsup/c-ares/main.install/usr/lib64
 EOF
@@ -61,6 +67,7 @@ build_dir="build"
 cmake_prefix_path="${CMAKE_PREFIX_PATH:-}"
 cares_libdir=""
 baseline_lib=""
+baseline_tag=""
 skip_tests=0
 skip_symbols=0
 skip_abi=0
@@ -81,6 +88,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --baseline-lib)
             baseline_lib="$2"
+            shift 2
+            ;;
+        --baseline-tag)
+            baseline_tag="$2"
             shift 2
             ;;
         --skip-tests)
@@ -114,9 +125,29 @@ require_tool sed
 require_tool awk
 require_tool sort
 require_tool comm
+if [[ -n "$baseline_tag" ]]; then
+    require_tool git
+fi
+
+if [[ -n "$baseline_lib" && -n "$baseline_tag" ]]; then
+    echo "error: --baseline-lib and --baseline-tag are mutually exclusive" >&2
+    exit 1
+fi
 
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
+
+baseline_root=""
+baseline_worktree=""
+cleanup() {
+    if [[ -n "$baseline_worktree" && -d "$baseline_worktree" ]]; then
+        git worktree remove --force "$baseline_worktree" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "$baseline_root" && -d "$baseline_root" ]]; then
+        rm -rf "$baseline_root"
+    fi
+}
+trap cleanup EXIT
 
 configure_cmd=(cmake -S "$root" -B "$build_dir")
 if [[ -n "$cmake_prefix_path" ]]; then
@@ -191,8 +222,37 @@ else
 fi
 
 if [[ $skip_abi -eq 0 ]]; then
+    if [[ -n "$baseline_tag" ]]; then
+        baseline_root="$(mktemp -d "${TMPDIR:-/tmp}/nsgai-baseline.XXXXXX")"
+        baseline_worktree="$baseline_root/worktree"
+        baseline_build_dir="$baseline_root/build"
+
+        echo "ABI gate: building baseline tag $baseline_tag in a temporary worktree"
+        git worktree add --detach "$baseline_worktree" "$baseline_tag"
+
+        baseline_configure_cmd=(
+            cmake -S "$baseline_worktree" -B "$baseline_build_dir"
+            -DNSGAI_BUILD_TESTS=OFF
+            -DNSGAI_BUILD_PRELOAD=OFF
+            -DNSGAI_BUILD_NSS=OFF
+            -DNSGAI_BUILD_EXAMPLES=OFF
+        )
+        if [[ -n "$cmake_prefix_path" ]]; then
+            baseline_configure_cmd+=("-DCMAKE_PREFIX_PATH=$cmake_prefix_path")
+        fi
+        "${baseline_configure_cmd[@]}"
+        cmake --build "$baseline_build_dir" --target nsgai
+
+        baseline_lib="$(find "$baseline_build_dir" -maxdepth 1 -type f \
+            -name 'libnsgai.so*' | sort -V | tail -n1 || true)"
+        if [[ -z "$baseline_lib" ]]; then
+            echo "error: could not locate baseline libnsgai.so for tag $baseline_tag" >&2
+            exit 1
+        fi
+    fi
+
     if [[ -z "$baseline_lib" ]]; then
-        echo "ABI gate: skipped (no --baseline-lib provided)"
+        echo "ABI gate: skipped (no --baseline-lib or --baseline-tag provided)"
     else
         require_tool abidiff
         if [[ ! -f "$baseline_lib" ]]; then
