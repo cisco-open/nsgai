@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         valgrind \
         gcovr \
         python3-pip \
+        python3-venv \
         libcmocka-dev \
         libc-ares-dev \
         git \
@@ -48,8 +49,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # style key used by .clang-format (added in clang-format 15); pin a
 # modern build from PyPI instead so nsgai_format_check runs correctly.
 ARG CLANG_FORMAT_VERSION=22.1.8
-RUN pip3 install --no-cache-dir --break-system-packages \
-    "clang-format==${CLANG_FORMAT_VERSION}"
+RUN python3 -m venv /opt/clang-format-venv && \
+    /opt/clang-format-venv/bin/pip install --no-cache-dir \
+        "clang-format==${CLANG_FORMAT_VERSION}"
+ENV PATH="/opt/clang-format-venv/bin:${PATH}"
 
 # Use the distro c-ares package if it meets nsgai's minimum version,
 # otherwise build the pinned upstream ref from source.
