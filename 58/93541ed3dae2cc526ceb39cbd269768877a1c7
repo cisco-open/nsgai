@@ -1,0 +1,20 @@
+.github/workflows/ci.yml
+  s_70d22b78842803::t_1a700f52afee68 68
+  s_70d22b78842803::t_6232e5a344dc71 69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5893541ed3dae2cc526ceb39cbd269768877a1c7",
+  "prompts": {},
+  "sessions": {
+    "s_70d22b78842803": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "59e88c2c-195d-46ac-992b-6208f2936949",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
