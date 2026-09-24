@@ -33,5 +33,10 @@ updates:
       docker-images:
         patterns:
           - "*"
+    ignore:
+      # Keep multiple supported Debian and Ubuntu generations in the matrix;
+      # their base-image tags are selected deliberately rather than floated.
+      - dependency-name: "debian"
+      - dependency-name: "ubuntu"
     schedule:
       interval: "weekly"

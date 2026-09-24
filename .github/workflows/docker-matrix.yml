@@ -50,7 +50,9 @@ jobs:
           - fedora
           - ubuntu22.04
           - ubuntu24.04
+          - ubuntu26.04
           - debian12
+          - debian13
           - rockylinux9
         arch:
           - amd64

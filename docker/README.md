@@ -30,14 +30,16 @@ use the distro package if it meets nsgai's minimum supported version
 | `fedora`            | `Dockerfile.fedora`      | `fedora:44`     |
 | `ubuntu22.04`       | `Dockerfile.ubuntu22.04` | `ubuntu:22.04`  |
 | `ubuntu24.04`       | `Dockerfile.ubuntu24.04` | `ubuntu:24.04`  |
+| `ubuntu26.04`       | `Dockerfile.ubuntu26.04` | `ubuntu:26.04`  |
 | `debian12`          | `Dockerfile.debian12`    | `debian:12`     |
+| `debian13`          | `Dockerfile.debian13`    | `debian:13`     |
 | `rockylinux9`       | `Dockerfile.rockylinux9` | `rockylinux:9`  |
 
 `rockylinux9` is representative of the RHEL 9 family (Rocky/Alma/RHEL).
 
 ## Architecture
 
-All five Dockerfiles are architecture-agnostic: `dnf`/`apt` resolve the
+All seven Dockerfiles are architecture-agnostic: `dnf`/`apt` resolve the
 right per-arch packages automatically, and the CoreDNS download branches
 on `uname -m` (amd64/arm64/armv7 supported). Each image builds natively
 for whatever architecture the container runtime's host/emulation targets
