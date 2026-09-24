@@ -56,7 +56,7 @@ jobs:
       CARES_PREFIX: ${{ github.workspace }}/c-ares.install
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install build deps
         run: |
@@ -69,7 +69,7 @@ jobs:
 
       - name: Cache c-ares install tree
         id: cache-cares
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ env.CARES_PREFIX }}
           key: cares-${{ runner.os }}-${{ matrix.cares_ref }}-v1
