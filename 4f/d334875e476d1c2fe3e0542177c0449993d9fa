@@ -1,0 +1,26 @@
+README.md
+  s_7b1662060eb718::t_92dc33d35dd25a 39-40
+CMakeLists.txt
+  s_7b1662060eb718::t_3bbf86743c901a 534-555
+  s_7b1662060eb718::t_6fcead849c6449 40
+docs/release-process.md
+  s_7b1662060eb718::t_8afb777e465548 165,168-171,174-176
+  s_7b1662060eb718::t_92dc33d35dd25a 22-32,132-144,158,160-163,180-181,184-186,189-190
+  s_7b1662060eb718::t_8c3b3a792eea8a 178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4fd334875e476d1c2fe3e0542177c0449993d9fa",
+  "prompts": {},
+  "sessions": {
+    "s_7b1662060eb718": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "6c8bd58f-2059-4ac7-9cb6-38ead4ea5123",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
