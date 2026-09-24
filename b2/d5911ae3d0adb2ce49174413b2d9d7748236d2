@@ -1,0 +1,23 @@
+.github/workflows/cares-matrix.yml
+  s_70d22b78842803::t_71a0ce28f94cf3 67
+  s_70d22b78842803::t_d5a881eb2c42ca 66,68
+.github/workflows/ci.yml
+  s_70d22b78842803::t_d5a881eb2c42ca 69-71,97,99
+  s_70d22b78842803::t_71a0ce28f94cf3 98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2d5911ae3d0adb2ce49174413b2d9d7748236d2",
+  "prompts": {},
+  "sessions": {
+    "s_70d22b78842803": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "59e88c2c-195d-46ac-992b-6208f2936949",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
