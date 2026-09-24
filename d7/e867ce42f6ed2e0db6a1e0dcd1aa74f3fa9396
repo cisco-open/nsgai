@@ -1,0 +1,24 @@
+src/nsgai_async.c
+  s_70d22b78842803::t_626f1ae8618bcd 340-341
+  s_70d22b78842803::t_110e00d227d1e3 342
+test/test_async_api.c
+  s_70d22b78842803::t_5769d43a03eb8e 134
+CMakeLists.txt
+  s_70d22b78842803::t_5769d43a03eb8e 366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d7e867ce42f6ed2e0db6a1e0dcd1aa74f3fa9396",
+  "prompts": {},
+  "sessions": {
+    "s_70d22b78842803": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "59e88c2c-195d-46ac-992b-6208f2936949",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
