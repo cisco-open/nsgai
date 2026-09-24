@@ -60,7 +60,7 @@ jobs:
       NSGAI_CONTAINER_RUNTIME: docker
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build image and run full test suite (${{ matrix.platform }}/${{ matrix.arch }})
         run: |
@@ -68,7 +68,7 @@ jobs:
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ matrix.platform }}-${{ matrix.arch }}
           path: build-container-${{ matrix.platform }}-${{ matrix.arch }}/coverage/html

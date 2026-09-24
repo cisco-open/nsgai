@@ -60,12 +60,13 @@ jobs:
     name: clang-format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install clang-format
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang-format cmake
+          sudo apt-get install -y --no-install-recommends \
+              clang-format cmake libc-ares-dev
 
       - name: Run format-check
         run: |
@@ -84,21 +85,21 @@ jobs:
       CARES_REF: main         # bump to a tag once upstream cuts one we like
       CARES_PREFIX: ${{ github.workspace }}/c-ares.install
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install build deps
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
               build-essential cmake ninja-build git \
-              valgrind clang-format pkg-config
+              valgrind clang-format pkg-config libcmocka-dev
 
       # ---- c-ares (cached) -----------------------------------------------
       # Key on the upstream ref + arch so amd64/arm64 caches never mix
       # (runner.os is "Linux" for both).
       - name: Cache c-ares install tree
         id: cache-cares
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.CARES_PREFIX }}
           key: cares-${{ runner.os }}-${{ matrix.arch }}-${{ env.CARES_REF }}-v1
