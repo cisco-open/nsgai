@@ -1,0 +1,21 @@
+docs/release-process.md
+  s_70d22b78842803::t_81dacf6a6b3ab0 149-167
+sbom/nsgai-source.spdx.json.in
+  s_70d22b78842803::t_13c763a4641c47 37,42,49-50,55,57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2861e4fa2824a825b3f31c24fce796258a1d34c5",
+  "prompts": {},
+  "sessions": {
+    "s_70d22b78842803": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "59e88c2c-195d-46ac-992b-6208f2936949",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
