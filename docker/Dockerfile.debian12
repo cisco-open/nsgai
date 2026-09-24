@@ -19,7 +19,7 @@
 # full platform matrix and scripts/run-container-tests.sh for the
 # canonical invocation (--platform debian12).
 
-FROM debian:12
+FROM debian:13
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
