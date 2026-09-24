@@ -1,0 +1,19 @@
+docker/Dockerfile.ubuntu22.04
+  s_70d22b78842803::t_1542695aca992c 51-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7b6d5f17732093e4161b29aca8b7a57421c7042e",
+  "prompts": {},
+  "sessions": {
+    "s_70d22b78842803": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "59e88c2c-195d-46ac-992b-6208f2936949",
+        "model": "unknown"
+      },
+      "human_author": "Billie Alsup <balsup@cisco.com>"
+    }
+  }
+}
