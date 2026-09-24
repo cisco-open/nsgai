@@ -17,11 +17,11 @@
 
 cmake_minimum_required(VERSION 3.16)
 project(nsgai
-        VERSION 0.2.1
+        VERSION 0.2.2
         DESCRIPTION "Network-namespace-aware getaddrinfo replacement using c-ares"
         LANGUAGES C)
 
-set(NSGAI_VERSION_SUFFIX "")
+set(NSGAI_VERSION_SUFFIX "-dev")
 set(NSGAI_PROJECT_VERSION_DISPLAY "${PROJECT_VERSION}${NSGAI_VERSION_SUFFIX}")
 
 # ----- source SBOM -------------------------------------------------------

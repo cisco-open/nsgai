@@ -146,6 +146,25 @@ built dynamically from the previous release tag in a temporary worktree with
 10. Attach the generated `build-release/sbom/nsgai-X.Y.Z-source.spdx.json`
    to the GitHub release alongside the source archive.
 
+## Post-release development reset
+
+After the release tag, source archive, release notes, and SBOM have been
+published, start the next development cycle in a separate commit. Do not make
+this change before creating the release tag or generating release assets.
+
+For the next planned version `A.B.C`, update both version sources:
+
+1. In `CMakeLists.txt`, set `project(VERSION A.B.C)` and
+  `NSGAI_VERSION_SUFFIX` to `"-dev"`.
+2. In `include/nsgai.h`, keep the major/minor/patch macros at `A`, `B`, and
+  `C`, set `NSGAI_VERSION_SUFFIX` to `"-dev"`, and set
+  `NSGAI_VERSION_STRING` to `"A.B.C-dev"`.
+3. Run the normal build, tests, and formatting checks.
+4. Commit and push the development-version change to `main`.
+
+The release tag and its generated SBOM remain tied to the release version;
+the `-dev` commit is the starting point for the next release cycle.
+
 ## Standard tooling guidance
 
 Use established ABI tooling rather than custom hash databases.

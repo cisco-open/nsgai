@@ -96,11 +96,11 @@ extern "C" {
 /** @brief Minor version of the nsgai public API. */
 #define NSGAI_VERSION_MINOR 2
 /** @brief Patch version of the nsgai public API. */
-#define NSGAI_VERSION_PATCH 1
+#define NSGAI_VERSION_PATCH 2
 /** @brief Suffix for unreleased development builds. */
 #define NSGAI_VERSION_SUFFIX ""
 /** @brief Full version string for the current build tree. */
-#define NSGAI_VERSION_STRING "0.2.1"
+#define NSGAI_VERSION_STRING "0.2.2-dev"
 
 /**
  * @brief Host/DNS lookup ordering policy for namespace-aware resolution.

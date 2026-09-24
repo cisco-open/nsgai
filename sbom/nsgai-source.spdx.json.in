@@ -34,24 +34,27 @@
       "name": "c-ares",
       "SPDXID": "SPDXRef-Package-c-ares",
       "versionInfo": ">= 1.27.0",
+      "supplier": "Organization: c-ares project",
       "downloadLocation": "https://github.com/c-ares/c-ares.git",
       "filesAnalyzed": false,
       "licenseConcluded": "MIT",
       "licenseDeclared": "MIT",
-      "copyrightText": "NOASSERTION",
+      "copyrightText": "Copyright (c) 1998 Massachusetts Institute of Technology; Copyright (c) 2007-2023 Daniel Stenberg with many contributors.",
       "primaryPackagePurpose": "LIBRARY",
       "comment": "Runtime and build dependency. This source release does not include c-ares; consumers select the resolved version."
     },
     {
       "name": "cmocka",
       "SPDXID": "SPDXRef-Package-cmocka",
+      "versionInfo": ">= 1.1.5",
+      "supplier": "Organization: cmocka project",
       "downloadLocation": "https://cmocka.org/",
       "filesAnalyzed": false,
       "licenseConcluded": "Apache-2.0",
       "licenseDeclared": "Apache-2.0",
-      "copyrightText": "NOASSERTION",
+      "copyrightText": "Copyright (c) 2008 Google Inc.; Copyright (c) 2014-2022 Andreas Schneider; Copyright (c) 2014 Luis Pabon, Jr.; Copyright (c) 2015 Jakub Hrozek.",
       "primaryPackagePurpose": "LIBRARY",
-      "comment": "Test-only dependency; it is required only when NSGAI_BUILD_TESTS is enabled and is not a runtime dependency of the installed libraries."
+      "comment": "Test-only dependency; it is required only when NSGAI_BUILD_TESTS is enabled and is not a runtime dependency of the installed libraries. The generated source SBOM records the supported requirement range, not the distro-resolved package version."
     }
   ],
   "relationships": [
