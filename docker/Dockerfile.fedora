@@ -19,7 +19,7 @@
 # matrix and scripts/run-container-tests.sh for the canonical invocation
 # (--platform fedora).
 
-FROM fedora:44
+FROM fedora:45
 
 RUN dnf install -y --setopt=install_weak_deps=False \
         gcc \

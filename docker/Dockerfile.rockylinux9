@@ -20,7 +20,7 @@
 # scripts/run-container-tests.sh for the canonical invocation
 # (--platform rockylinux9).
 
-FROM rockylinux:9
+FROM rockylinux:10
 
 # EPEL provides libcmocka-devel, which is not in the base AppStream/BaseOS
 # repos on RHEL-family 9. Many EPEL packages also require the CodeReady
